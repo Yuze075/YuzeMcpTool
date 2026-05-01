@@ -13,13 +13,13 @@ YuzeMcpTool 在 Unity 内运行一个本地 Streamable HTTP MCP server。
 
 | 项目 | 值 |
 |---|---|
-| MCP URL | `http://127.0.0.1:3100/mcp` |
-| Health URL | `http://127.0.0.1:3100/health` |
+| MCP URL | `http://127.0.0.1:3100/mcp` 或 `http://localhost:3100/mcp` |
+| Health URL | `http://127.0.0.1:3100/health` 或 `http://localhost:3100/health` |
 | Transport | Streamable HTTP / HTTP |
 | 暴露的 tool | `evalJsCode` |
 | Unity 菜单 | `YuzeToolkit/MCP/Server Window` |
 
-除非你有受控网络环境，否则保持 server 绑定在 `127.0.0.1`。这个包面向本地开发自动化。
+除非你有受控网络环境，否则保持 server 绑定在 loopback。本地开发默认同时监听 `127.0.0.1` 和 `localhost`，兼容不同客户端的本地地址写法。
 
 ## 安装
 
@@ -237,6 +237,7 @@ Mcp-Session-Id: <session id>
 |---|---|
 | 客户端无法连接 | Unity 已打开、Server Window 显示 running、`3100` 端口空闲、endpoint URL 正确。 |
 | `Session not found` | 重新 initialize MCP 客户端。Domain Reload 或 server 重启会让 session 失效。 |
+| `Parse error` 或 `Invalid character '\'` | HTTP body 不是合法 JSON。常见原因是整段 JSON 被多转义了一层，例如发成 `{\\\"jsonrpc\\\"...}`，而不是 `{"jsonrpc":...}`。 |
 | 编译期间 tool 调用失败 | 等 Unity 编译或资源刷新结束。 |
 | Player 中 Editor helper 失败 | Editor helper 依赖 `UnityEditor`；Runtime/Player 中用 Runtime helper。 |
 | 看不到 tools | 确认客户端使用 HTTP/Streamable HTTP，并连接 `/mcp`，不是 `/health`。 |

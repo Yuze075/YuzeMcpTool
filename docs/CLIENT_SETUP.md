@@ -13,13 +13,13 @@ YuzeMcpTool runs a local Streamable HTTP MCP server inside Unity.
 
 | Item | Value |
 |---|---|
-| MCP URL | `http://127.0.0.1:3100/mcp` |
-| Health URL | `http://127.0.0.1:3100/health` |
+| MCP URL | `http://127.0.0.1:3100/mcp` or `http://localhost:3100/mcp` |
+| Health URL | `http://127.0.0.1:3100/health` or `http://localhost:3100/health` |
 | Transport | Streamable HTTP / HTTP |
 | Tool exposed | `evalJsCode` |
 | Unity menu | `YuzeToolkit/MCP/Server Window` |
 
-Keep the server bound to `127.0.0.1` unless you have a controlled network setup. This package is intended for local development automation.
+Keep the server bound to loopback unless you have a controlled network setup. By default, the server listens on both `127.0.0.1` and `localhost` for local client compatibility.
 
 ## Install
 
@@ -237,6 +237,7 @@ Mcp-Session-Id: <session id>
 |---|---|
 | Client cannot connect | Unity is open, server window says running, port `3100` is free, endpoint URL is correct. |
 | `Session not found` | Reinitialize the MCP client. Domain Reload or server restart can invalidate sessions. |
+| `Parse error` or `Invalid character '\'` | The HTTP body is not valid JSON. This often happens when the whole JSON request was escaped one extra time, for example `{\\\"jsonrpc\\\"...}` instead of `{"jsonrpc":...}`. |
 | Tool calls fail during compile | Wait for Unity compilation or asset refresh to finish. |
 | Editor helper fails in Player | Editor helpers require `UnityEditor`; use Runtime helpers in Runtime/Player. |
 | No tools appear | Confirm the client uses HTTP/Streamable HTTP and points to `/mcp`, not `/health`. |

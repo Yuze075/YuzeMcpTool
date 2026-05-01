@@ -13,7 +13,13 @@ namespace YuzeToolkit
     public sealed class McpServer : IDisposable
     {
         private const string ProtocolVersion = "2025-06-18";
+        private const string FallbackProtocolVersion = "2025-03-26";
         private const string ServerName = "YuzeMcpTool";
+        private static readonly HashSet<string> SupportedProtocolVersions = new(StringComparer.Ordinal)
+        {
+            ProtocolVersion,
+            FallbackProtocolVersion,
+        };
         private static readonly Lazy<McpServer> LazyShared = new(() => new McpServer());
 
         private readonly object _syncRoot = new();
@@ -63,16 +69,17 @@ namespace YuzeToolkit
                 _sessions = new McpSessionRegistry();
                 _cancellation = new CancellationTokenSource();
                 _listener = new HttpListener();
-                var prefix = $"http://{_options.Host}:{_options.Port}/";
-                _listener.Prefixes.Add(prefix);
 
                 try
                 {
+                    foreach (var prefix in BuildListenerPrefixes(_options))
+                        _listener.Prefixes.Add(prefix);
+
                     _listener.Start();
                     _state = new McpServerState
                     {
                         IsRunning = true,
-                        Endpoint = $"http://{_options.Host}:{_options.Port}/mcp",
+                        Endpoint = $"http://{FormatHttpHost(string.IsNullOrWhiteSpace(_options.Host) ? "127.0.0.1" : _options.Host)}:{_options.Port}/mcp",
                         StartedAtUtc = DateTime.UtcNow,
                         LastError = string.Empty,
                     };
@@ -155,6 +162,12 @@ namespace YuzeToolkit
 
             try
             {
+                if (!IsOriginAllowed(request))
+                {
+                    await WriteJsonAsync(response, 403, JsonRpcError(null, -32000, "Forbidden origin."));
+                    return;
+                }
+
                 if (request.HttpMethod == "OPTIONS")
                 {
                     WriteNoContent(response, 204);
@@ -167,14 +180,14 @@ namespace YuzeToolkit
                     return;
                 }
 
-                if (request.Url.AbsolutePath == "/health")
+                if (IsPath(request.Url.AbsolutePath, "/health"))
                 {
                     var health = await MainThreadDispatcher.RunAsync(BuildHealthObject);
                     await WriteJsonAsync(response, 200, health);
                     return;
                 }
 
-                if (request.Url.AbsolutePath != "/mcp")
+                if (!IsPath(request.Url.AbsolutePath, "/mcp"))
                 {
                     await WriteJsonAsync(response, 404, LitJson.Obj(("error", "Not Found")));
                     return;
@@ -189,13 +202,19 @@ namespace YuzeToolkit
                         return;
                     }
 
-                    _sessions.Remove(sessionId);
+                    if (!_sessions.Remove(sessionId))
+                    {
+                        await WriteJsonAsync(response, 404, JsonRpcError(null, -32001, "Session not found."));
+                        return;
+                    }
+
                     WriteNoContent(response, 200);
                     return;
                 }
 
                 if (request.HttpMethod != "POST")
                 {
+                    response.Headers["Allow"] = "POST, GET, OPTIONS, DELETE";
                     await WriteJsonAsync(response, 405, LitJson.Obj(("error", "Method Not Allowed")));
                     return;
                 }
@@ -204,17 +223,25 @@ namespace YuzeToolkit
                 var parsed = LitJson.Parse(body);
                 var result = await HandleJsonRpcAsync(parsed, request, response, cancellationToken);
 
-                if (result == null)
+                if (result.Body == null)
                 {
-                    WriteNoContent(response, 202);
+                    WriteNoContent(response, result.StatusCode);
                     return;
                 }
 
-                await WriteJsonAsync(response, 200, result);
+                await WriteJsonAsync(response, result.StatusCode, result.Body);
+            }
+            catch (LitJson.JsonException ex)
+            {
+                await WriteJsonAsync(response, 400, JsonRpcError(null, -32700, "Parse error: " + ex.Message));
             }
             catch (FormatException ex)
             {
                 await WriteJsonAsync(response, 400, JsonRpcError(null, -32700, "Parse error: " + ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteJsonAsync(response, 413, JsonRpcError(null, -32000, ex.Message));
             }
             catch (Exception ex)
             {
@@ -223,51 +250,56 @@ namespace YuzeToolkit
             }
         }
 
-        private async Task<object?> HandleJsonRpcAsync(object? parsed, HttpListenerRequest request, HttpListenerResponse response, CancellationToken cancellationToken)
+        private async Task<McpHttpResult> HandleJsonRpcAsync(object? parsed, HttpListenerRequest request, HttpListenerResponse response, CancellationToken cancellationToken)
         {
             if (parsed is List<object?> batch)
             {
+                var statusCode = 202;
                 var responses = new List<object?>();
                 foreach (var item in batch)
                 {
                     var result = await HandleSingleJsonRpcAsync(item, request, response, cancellationToken);
-                    if (result != null) responses.Add(result);
+                    statusCode = SelectBatchStatusCode(statusCode, result.StatusCode);
+                    if (result.Body != null) responses.Add(result.Body);
                 }
-                return responses.Count == 0 ? null : responses;
+                return new McpHttpResult(responses.Count == 0 ? statusCode : SelectResponseStatusCode(statusCode), responses.Count == 0 ? null : responses);
             }
 
             return await HandleSingleJsonRpcAsync(parsed, request, response, cancellationToken);
         }
 
-        private async Task<object?> HandleSingleJsonRpcAsync(object? parsed, HttpListenerRequest request, HttpListenerResponse response, CancellationToken cancellationToken)
+        private async Task<McpHttpResult> HandleSingleJsonRpcAsync(object? parsed, HttpListenerRequest request, HttpListenerResponse response, CancellationToken cancellationToken)
         {
             var message = LitJson.AsObject(parsed);
             if (message == null)
-                return JsonRpcError(null, -32600, "Invalid Request");
+                return new McpHttpResult(400, JsonRpcError(null, -32600, "Invalid Request"));
 
             message.TryGetValue("id", out var id);
             var hasId = message.ContainsKey("id");
             var method = LitJson.GetString(message, "method") ?? string.Empty;
 
             if (string.IsNullOrEmpty(method))
-                return JsonRpcError(id, -32600, "Invalid Request: missing method.");
+                return new McpHttpResult(400, JsonRpcError(id, -32600, "Invalid Request: missing method."));
 
             if (method == "initialize")
-                return HandleInitialize(message, response);
+                return new McpHttpResult(200, HandleInitialize(message, response));
 
             if (!TryResolveSession(request, out var session, out var error))
-                return JsonRpcError(id, error.Code, error.Message);
+                return new McpHttpResult(error.HttpStatusCode, JsonRpcError(id, error.Code, error.Message));
+
+            if (!TryValidateProtocolHeader(request, session, out var protocolError))
+                return new McpHttpResult(400, JsonRpcError(id, protocolError.Code, protocolError.Message));
 
             if (!hasId)
-                return null;
+                return new McpHttpResult(202, null);
 
             session.Touch();
             return method switch
             {
-                "ping" => JsonRpcResult(id, LitJson.Obj()),
-                "tools/list" => JsonRpcResult(id, LitJson.Obj(("tools", LitJson.Arr(EvalJsCodeTool.ToolDefinition())))),
-                "tools/call" => await HandleToolCallAsync(id, message, session, cancellationToken),
-                _ => JsonRpcError(id, -32601, $"Method '{method}' was not found.")
+                "ping" => new McpHttpResult(200, JsonRpcResult(id, LitJson.Obj())),
+                "tools/list" => new McpHttpResult(200, JsonRpcResult(id, LitJson.Obj(("tools", LitJson.Arr(EvalJsCodeTool.ToolDefinition()))))),
+                "tools/call" => new McpHttpResult(200, await HandleToolCallAsync(id, message, session, cancellationToken)),
+                _ => new McpHttpResult(200, JsonRpcError(id, -32601, $"Method '{method}' was not found."))
             };
         }
 
@@ -278,9 +310,9 @@ namespace YuzeToolkit
             var requestedProtocol = parameters != null ? LitJson.GetString(parameters, "protocolVersion") : null;
             var clientInfo = parameters != null ? LitJson.AsObject(parameters.TryGetValue("clientInfo", out var c) ? c : null) : null;
             var clientName = clientInfo != null ? LitJson.GetString(clientInfo, "name") ?? string.Empty : string.Empty;
-            var protocol = string.IsNullOrWhiteSpace(requestedProtocol) ? ProtocolVersion : requestedProtocol!;
+            var protocol = NegotiateProtocolVersion(requestedProtocol);
             var session = _sessions.Create(protocol, clientName, _options.MaxSessions);
-            response.Headers["Mcp-Session-Id"] = session.Id;
+            response.Headers["MCP-Session-Id"] = session.Id;
 
             return JsonRpcResult(id, LitJson.Obj(
                 ("protocolVersion", protocol),
@@ -310,19 +342,44 @@ namespace YuzeToolkit
             return JsonRpcResult(id, result);
         }
 
-        private bool TryResolveSession(HttpListenerRequest request, out McpSession session, out (int Code, string Message) error)
+        private bool TryResolveSession(HttpListenerRequest request, out McpSession session, out (int HttpStatusCode, int Code, string Message) error)
         {
             var sessionId = request.Headers["mcp-session-id"] ?? string.Empty;
             if (string.IsNullOrEmpty(sessionId))
             {
                 session = null!;
-                error = (-32000, "Mcp-Session-Id header is required.");
+                error = (400, -32000, "MCP-Session-Id header is required.");
                 return false;
             }
 
             if (!_sessions.TryGet(sessionId, out session))
             {
-                error = (-32001, "Session not found. Reinitialize the MCP client.");
+                error = (404, -32001, "Session not found. Reinitialize the MCP client.");
+                return false;
+            }
+
+            error = default;
+            return true;
+        }
+
+        private static bool TryValidateProtocolHeader(HttpListenerRequest request, McpSession session, out (int Code, string Message) error)
+        {
+            var protocol = request.Headers["mcp-protocol-version"];
+            if (string.IsNullOrWhiteSpace(protocol))
+            {
+                error = default;
+                return true;
+            }
+
+            if (!SupportedProtocolVersions.Contains(protocol!))
+            {
+                error = (-32002, $"Unsupported MCP-Protocol-Version '{protocol}'.");
+                return false;
+            }
+
+            if (!string.Equals(protocol, session.ProtocolVersion, StringComparison.Ordinal))
+            {
+                error = (-32002, $"MCP-Protocol-Version '{protocol}' does not match negotiated session protocol '{session.ProtocolVersion}'.");
                 return false;
             }
 
@@ -362,6 +419,20 @@ namespace YuzeToolkit
                 ("id", id)
             );
 
+        private static string NegotiateProtocolVersion(string? requestedProtocol)
+        {
+            if (string.IsNullOrWhiteSpace(requestedProtocol)) return ProtocolVersion;
+            return SupportedProtocolVersions.Contains(requestedProtocol!) ? requestedProtocol! : ProtocolVersion;
+        }
+
+        private static int SelectBatchStatusCode(int currentStatusCode, int nextStatusCode)
+        {
+            if (nextStatusCode >= 400) return nextStatusCode;
+            return currentStatusCode == 202 ? nextStatusCode : currentStatusCode;
+        }
+
+        private static int SelectResponseStatusCode(int statusCode) => statusCode == 202 ? 200 : statusCode;
+
         private static async Task<string> ReadBodyAsync(HttpListenerRequest request, int maxBytes)
         {
             using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
@@ -382,8 +453,8 @@ namespace YuzeToolkit
         {
             response.Headers["Access-Control-Allow-Origin"] = "*";
             response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, DELETE";
-            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, mcp-session-id, mcp-protocol-version";
-            response.Headers["Access-Control-Expose-Headers"] = "mcp-session-id";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, MCP-Session-Id, MCP-Protocol-Version, mcp-session-id, mcp-protocol-version";
+            response.Headers["Access-Control-Expose-Headers"] = "MCP-Session-Id, mcp-session-id";
         }
 
         private static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, object body)
@@ -400,7 +471,83 @@ namespace YuzeToolkit
         private static void WriteNoContent(HttpListenerResponse response, int statusCode)
         {
             response.StatusCode = statusCode;
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentLength64 = 0;
             response.OutputStream.Close();
+        }
+
+        private static List<string> BuildListenerPrefixes(McpServerOptions options)
+        {
+            var hosts = new List<string>();
+            AddUniqueHost(hosts, string.IsNullOrWhiteSpace(options.Host) ? "127.0.0.1" : options.Host);
+
+            if (options.BindLocalhostAliases && IsLoopbackHost(options.Host))
+            {
+                AddUniqueHost(hosts, "127.0.0.1");
+                AddUniqueHost(hosts, "localhost");
+            }
+
+            var prefixes = new List<string>(hosts.Count);
+            foreach (var host in hosts)
+                prefixes.Add($"http://{FormatHttpHost(host)}:{options.Port}/");
+            return prefixes;
+        }
+
+        private static void AddUniqueHost(List<string> hosts, string host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return;
+            foreach (var existing in hosts)
+            {
+                if (string.Equals(existing, host, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            hosts.Add(host);
+        }
+
+        private static string FormatHttpHost(string host)
+        {
+            if (host.StartsWith("[", StringComparison.Ordinal) && host.EndsWith("]", StringComparison.Ordinal))
+                return host;
+            return host.Contains(":") ? "[" + host + "]" : host;
+        }
+
+        private static bool IsLoopbackHost(string? host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return true;
+            var normalized = host.Trim();
+            if (normalized.StartsWith("[", StringComparison.Ordinal) && normalized.EndsWith("]", StringComparison.Ordinal))
+                normalized = normalized[1..^1];
+            return string.Equals(normalized, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalized, "::1", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsOriginAllowed(HttpListenerRequest request)
+        {
+            var origin = request.Headers["Origin"];
+            if (string.IsNullOrWhiteSpace(origin)) return true;
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+            return uri.IsLoopback;
+        }
+
+        private static bool IsPath(string actualPath, string expectedPath)
+        {
+            var normalized = actualPath.TrimEnd('/');
+            if (string.IsNullOrEmpty(normalized)) normalized = "/";
+            return string.Equals(normalized, expectedPath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private readonly struct McpHttpResult
+        {
+            public McpHttpResult(int statusCode, object? body)
+            {
+                StatusCode = statusCode;
+                Body = body;
+            }
+
+            public int StatusCode { get; }
+
+            public object? Body { get; }
         }
     }
 }
