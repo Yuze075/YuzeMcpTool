@@ -1,0 +1,16 @@
+{
+  "name": "com.yuzetoolkit.mcptool",
+  "version": "1.0.0",
+  "displayName": "YuzeMcpTool",
+  "description": "一个给 AI Agent 使用的 MCP 服务，让 AI 可以访问 Unity 逻辑",
+  "unity": "2022.3",
+  "author": {
+    "name": "Yzue",
+    "email": "925581968@qq.com",
+    "url": "https://github.com/Yuze075"
+  },
+  "dependencies": {
+    "com.unity.test-framework": "1.4.0",
+    "com.tencent.puerts.core": "3.0.0"
+  }
+}
