@@ -32,7 +32,7 @@ Packages/com.yuzetoolkit.mcptool
 Git URL package：
 
 ```text
-https://github.com/<owner>/<repo>.git?path=Packages/com.yuzetoolkit.mcptool
+https://github.com/Yuze075/YuzeMcpTool.git
 ```
 
 Unity 会从 `package.json` 解析这些依赖：

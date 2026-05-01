@@ -37,7 +37,7 @@ Packages/com.yuzetoolkit.mcptool
 Unity Package Manager Git URL：
 
 ```text
-https://github.com/<owner>/<repo>.git?path=Packages/com.yuzetoolkit.mcptool
+https://github.com/Yuze075/YuzeMcpTool.git
 ```
 
 依赖：
