@@ -1,12 +1,12 @@
 # Advanced Notes
 
-[README](../README.md) | [中文](ADVANCED_USAGE_zh.md) | [Client setup](CLIENT_SETUP.md) | [Helper reference](HELPER_MODULES.md) | [Project design](PROJECT_DESIGN.md)
+[README](../README.md) | [中文](ADVANCED_USAGE_zh.md) | [Helper reference](HELPER_MODULES.md) | [Project design](PROJECT_DESIGN.md)
 
 [![Bridge](https://img.shields.io/badge/Bridge-Commands-9b59b6)](#bridge-commands)
 [![PuerTS](https://img.shields.io/badge/PuerTS-C%23%20Interop-00a8ff)](#puerts-c-interop)
 [![Safety](https://img.shields.io/badge/Safety-confirm%20required-e67e22)](#safety-flags)
 
-This page is for agents and maintainers. It covers low-level bridge commands, direct PuerTS C# interop, safety flags, Domain Reload rules, old helper migration, and troubleshooting.
+This page is for agents and maintainers. It covers low-level bridge commands, direct PuerTS C# interop, safety flags, Domain Reload rules, and troubleshooting.
 
 ## Bridge Commands
 
@@ -183,29 +183,6 @@ Bridge commands that perform project file IO resolve paths inside the Unity proj
 | `Assets/Settings/GameSettings.asset` | `../outside-project/file.txt` |
 | `Packages/com.yuzetoolkit.mcptool/README.md` | `C:/Users/Name/Desktop/file.txt` |
 | `Temp/YuzeMcpTool-GameView.png` | Network paths or unrelated absolute paths |
-
-## Helper Path Migration
-
-| Old Path | New Path / Function |
-|---|---|
-| `Runtime/runtime-state.mjs` | `Runtime/runtime.mjs#getState()` |
-| `Runtime/unity-log.mjs` | `Runtime/runtime.mjs#getRecentLogs()` / `clearLogs()` |
-| `Runtime/batch.mjs` | `Runtime/runtime.mjs#executeBatch()` |
-| `Runtime/object-query.mjs` | `Runtime/objects.mjs#find()` / `get()` |
-| `Runtime/object-edit.mjs` | `Runtime/objects.mjs#create()` / `destroy()` / `setTransform()` |
-| `Runtime/component.mjs` | `Runtime/components.mjs` |
-| `Runtime/runtime-inspect.mjs` | `Runtime/diagnostics.mjs` |
-| `Editor/editor-state.mjs` | `Editor/editor.mjs#getState()` |
-| `Editor/compilation.mjs` | `Editor/editor.mjs#getCompilationState()` / `scheduleAssetRefresh()` |
-| `Editor/selection.mjs` | `Editor/editor.mjs#getSelection()` / `setSelection()` |
-| `Editor/menu-command.mjs` | `Editor/editor.mjs#executeMenuItem()` |
-| `Editor/screenshot.mjs` | `Editor/editor.mjs#screenshotGameView()` |
-| `Editor/asset-db.mjs` | `Editor/assets.mjs` |
-| `Editor/scene.mjs` | `Editor/scenes.mjs` |
-| `Editor/prefab.mjs` | `Editor/prefabs.mjs` |
-| `Editor/serialized-object.mjs` | `Editor/serialized.mjs` |
-| `Editor/package-manager.mjs` / `Editor/test-runner.mjs` / `Editor/build.mjs` | `Editor/pipeline.mjs` |
-| `Editor/editor-inspect.mjs` | `Editor/project.mjs` |
 
 ## Troubleshooting
 

@@ -9,7 +9,7 @@ Package Manager:
 - \`getPackageRequest(id)\` - Poll add/remove/search request state.
 
 Testing and build:
-- \`runTests(mode = "EditMode")\`, \`getTestRun(id)\`
+- \`runTests(mode = "EditMode")\`, \`getTestRun(id)\` - Requires optional Unity Test Framework; otherwise reports unsupported.
 - \`getBuildSettings()\`
 - \`buildPlayer(locationPathName, confirm = false)\`, \`getBuild(id)\`
 

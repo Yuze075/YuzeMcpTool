@@ -6,53 +6,92 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![AI Built](https://img.shields.io/badge/Built%20by-AI-orange)](#状态与保证)
 
-[English](README.md) | [客户端设置](docs/CLIENT_SETUP_zh.md) | [Helper 参考](docs/HELPER_MODULES_zh.md) | [项目设计](docs/PROJECT_DESIGN_zh.md) | [高级说明](docs/ADVANCED_USAGE_zh.md)
+[English](README.md) | [Helper 参考](docs/HELPER_MODULES_zh.md) | [项目设计](docs/PROJECT_DESIGN_zh.md) | [高级说明](docs/ADVANCED_USAGE_zh.md)
 
-YuzeMcpTool 是一个给 AI Agent 使用的 Unity MCP 服务。它只暴露一个 MCP tool：`evalJsCode`。Agent 可以通过 PuerTS 在 Unity 内运行 JavaScript，并使用 helper module 检查或操作 Editor、Scene、Asset、运行时对象、测试、构建和项目自定义 C# API。
+YuzeMcpTool 是一个跑在 Unity 内部、给 AI Agent 使用的 MCP server。它只暴露一个 MCP tool —— `evalJsCode` —— Agent 通过它把 JavaScript 提交到 PuerTS 中执行。helper module 覆盖 Editor 和 Runtime/Player 工作流：Scene、GameObject、Component、Asset、Prefab、Importer、序列化字段、测试、构建、校验，以及项目自定义 C# API。
 
 ![YuzeMcpTool overview](docs/Images/YuzeMcpTool-Overview.png)
 
 ## 这个工具做什么
 
-当你希望 AI 不只是从外部改文件，而是能进入 Unity 里检查和操作项目时，可以使用这个包。
+当你希望 AI 不只是从外部改文件，而是能进入 Unity 内部检查和操作时，使用这个包。
 
-- 检查 Unity Editor 或 Runtime/Player 状态。
-- 查询和编辑 GameObject、Component、Scene、Asset、Prefab、Importer 和序列化字段。
-- 读取日志、运行校验、运行测试、检查构建设置。
-- 在 Unity 内运行自定义 JavaScript 做项目专用调试。
-- 当 helper 或 bridge command 不够用时，直接扩展这个包。
+- 检查 Editor 和 Runtime/Player 状态。
+- 查询和编辑 GameObject、Component、Scene、Asset、Prefab、Importer、序列化字段。
+- 读取日志、运行校验、跑测试、检查构建设置。
+- 跑项目专用 JavaScript 做临时调试。
+- helper 或 bridge command 不够用时，直接扩展这个包。
 
-YuzeMcpTool 是脚本优先的设计。它不暴露几十个单独 MCP tool，而是给 Agent 一个稳定入口，让 Agent 在项目内部运行能访问 Unity 的 JavaScript。
+设计上是脚本优先：一个稳定的 MCP tool，加一层按需 import 的 JavaScript helper。MCP 表面保持很小，helper 层覆盖日常 Unity 自动化。
 
 ## 快速开始
 
-### 1. 安装包
+### 1. 先安装 PuerTS
 
-Embedded package：
+YuzeMcpTool 通过 PuerTS 在 Unity 内运行 JavaScript。安装本包前先装好：
+
+- `com.tencent.puerts.core` —— PuerTS 核心
+- 任选一个 JavaScript backend：`com.tencent.puerts.v8`、`com.tencent.puerts.quickjs`、`com.tencent.puerts.nodejs`、`com.tencent.puerts.webgl`
+
+具体安装步骤参考官方文档：
+
+- [PuerTS Unity 安装文档](https://puerts.github.io/docs/puerts/unity/install/)
+- [PuerTS GitHub 仓库](https://github.com/Tencent/puerts)
+
+YuzeMcpTool 不依赖、不替代、也不会安装 PuerTS 自带的 `com.tencent.puerts.mcp` 包。
+
+### 2. 安装 YuzeMcpTool
+
+选择下面任意一种方式安装。
+
+#### 直接下载安装
+
+1. 从 [GitHub](https://github.com/Yuze075/YuzeMcpTool) 下载 YuzeMcpTool 源码或 release 压缩包。
+2. 把压缩包解压到本地目录。
+3. 确认解压出来的 package 文件夹里有 `package.json`、`README.md`、`Runtime`、`Editor` 和 `Resources`。
+4. 打开你的 Unity 项目。
+5. 打开 `Window/Package Manager`。
+6. 点击 `+`。
+7. 选择 `Add package from disk...`。
+8. 选中解压后 package 文件夹里的 `package.json`。
+9. 等 Unity 导入并编译完成。
+
+如果想作为 embedded package 使用，把解压后的 package 文件夹复制到：
 
 ```text
 Packages/com.yuzetoolkit.mcptool
 ```
 
-Unity Package Manager Git URL：
+然后重新打开或切回 Unity，等待 package 导入。
+
+#### 通过 GitHub 链接安装
+
+Unity Package Manager 界面安装：
+
+1. 打开你的 Unity 项目。
+2. 打开 `Window/Package Manager`。
+3. 点击 `+`。
+4. 选择 `Add package from git URL...`。
+5. 粘贴：
 
 ```text
 https://github.com/Yuze075/YuzeMcpTool.git
 ```
 
-依赖：
+6. 点击 `Add`。
+7. 等 Unity 解析、导入并编译完成。
 
-| 依赖 | 版本 / 说明 |
-|---|---|
-| Unity | `2022.3` 或更新 |
-| PuerTS | [`com.tencent.puerts.core`](https://github.com/Tencent/puerts) `3.0.0`，并且需要一个 backend package，例如 `com.tencent.puerts.v8`、`quickjs`、`nodejs` 或 `webgl`。 |
-| Unity Test Framework | `com.unity.test-framework` `1.4.0` |
+也可以手动改 `Packages/manifest.json`，把这一项加到已有 dependencies 旁边：
 
-当前仓库已经在 `Packages/com.tencent.puerts.*` 下包含 embedded PuerTS package。把 YuzeMcpTool 安装到其他 Unity 项目时，需要先安装 PuerTS，或让 Unity 从你的 package source 解析它。见官方 [PuerTS Unity 安装文档](https://puerts.github.io/docs/puerts/unity/install/)。
+```json
+{
+  "dependencies": {
+    "com.yuzetoolkit.mcptool": "https://github.com/Yuze075/YuzeMcpTool.git"
+  }
+}
+```
 
-YuzeMcpTool 使用的是 PuerTS runtime 和 backend package，不要求也不会安装 PuerTS 自带的 `com.tencent.puerts.mcp` 包。
-
-### 2. 启动 Unity
+### 3. 启动 Unity 并检查服务
 
 Unity Editor 中 MCP server 默认自动启动。
 
@@ -60,39 +99,34 @@ Unity Editor 中 MCP server 默认自动启动。
 |---|---|
 | MCP endpoint | `http://127.0.0.1:3100/mcp` |
 | Health check | `http://127.0.0.1:3100/health` |
+| Transport | Streamable HTTP / HTTP |
 | Server window | `YuzeToolkit/MCP/Server Window` |
+| 暴露的 MCP tool | `evalJsCode` |
 
-打开 Server Window 可以启动/停止服务、复制 endpoint、查看活跃 session 和最近错误。
+在 `YuzeToolkit/MCP/Server Window` 中可以启动/停止服务、复制 endpoint、查看活跃 session 和最近错误。
 
-### 3. 连接 AI 客户端
+### 4. 配置 MCP 客户端
 
-把 MCP 客户端配置为 Streamable HTTP：
+下面所有示例都连接默认本地 endpoint：
 
 ```text
 http://127.0.0.1:3100/mcp
 ```
 
-连接后，让 Agent 列出 MCP tools。它应该只看到 `evalJsCode`。
+除非你有受控网络环境，否则保持 server 只绑定本机 loopback。
 
-推荐第一条提示词：
+#### Claude Code
 
-```text
-Use the Unity MCP tool. First call evalJsCode to import YuzeToolkit/mcp/index.mjs and read its description. Then inspect the current Unity state before making changes.
+CLI：
+
+```bash
+claude mcp add --transport http yuzemcptool --scope project http://127.0.0.1:3100/mcp
+claude mcp list
 ```
 
-## MCP 客户端配置
+项目级配置写入项目根目录的 `.mcp.json`，local/user scope 写入 `~/.claude.json`。
 
-不同客户端的配置格式略有差异。
-
-| 客户端 | 推荐配置 |
-|---|---|
-| Claude Code | `claude mcp add --transport http yuzemcptool http://127.0.0.1:3100/mcp` |
-| Cursor | 当前项目用 `.cursor/mcp.json`，全局用 `~/.cursor/mcp.json`。 |
-| VS Code / GitHub Copilot | 使用 `.vscode/mcp.json` 或 MCP server UI。VS Code 使用 `servers`。 |
-| Windsurf | 优先使用 Cascade MCP UI。直接写 JSON 时，不同版本 schema 可能不同。 |
-| Claude Desktop | 如果不能直接使用本地 HTTP MCP URL，优先使用 Desktop Extension (`.mcpb`) 或 wrapper。直接 HTTP 用 Claude Code 更简单。 |
-
-Cursor 示例：
+手动 `.mcp.json`：
 
 ```json
 {
@@ -105,7 +139,75 @@ Cursor 示例：
 }
 ```
 
-VS Code 示例：
+在 Claude Code 内执行 `/mcp` 可以查看和处理已配置的 server。
+
+#### Codex
+
+CLI：
+
+```bash
+codex mcp add yuzemcptool --url http://127.0.0.1:3100/mcp
+codex mcp list
+```
+
+Codex CLI 和 Codex IDE extension 共享 `~/.codex/config.toml`。手动 TOML：
+
+```toml
+[mcp_servers.yuzemcptool]
+url = "http://127.0.0.1:3100/mcp"
+```
+
+直接改文件后，重启 Codex 或重新加载 MCP 配置。
+
+#### Cursor
+
+项目配置：`.cursor/mcp.json`，全局配置：`~/.cursor/mcp.json`。
+
+```json
+{
+  "mcpServers": {
+    "yuzemcptool": {
+      "type": "http",
+      "url": "http://127.0.0.1:3100/mcp"
+    }
+  }
+}
+```
+
+在 Cursor 中打开 Settings → MCP 添加或启用 server。CLI：
+
+```bash
+cursor-agent mcp list
+cursor-agent mcp list-tools yuzemcptool
+```
+
+#### Gemini CLI
+
+CLI：
+
+```bash
+gemini mcp add --transport http yuzemcptool http://127.0.0.1:3100/mcp
+gemini mcp list
+```
+
+项目配置：`.gemini/settings.json`，用户配置：`~/.gemini/settings.json`。
+
+```json
+{
+  "mcpServers": {
+    "yuzemcptool": {
+      "httpUrl": "http://127.0.0.1:3100/mcp",
+      "trust": false
+    }
+  }
+}
+```
+
+如果要让 server 在当前项目外也可用，执行 `gemini mcp add` 时加 `--scope user`。
+
+#### VS Code / GitHub Copilot
+
+Workspace 配置：`.vscode/mcp.json`。
 
 ```json
 {
@@ -118,7 +220,35 @@ VS Code 示例：
 }
 ```
 
-更多连接与排错见 [客户端设置](docs/CLIENT_SETUP_zh.md)。
+UI 配置：
+
+1. 打开 Command Palette。
+2. 执行 `MCP: Add Server` 或 `MCP: Open Workspace Folder MCP Configuration`。
+3. 选择 HTTP / Streamable HTTP，填入 `http://127.0.0.1:3100/mcp`。
+4. 打开 GitHub Copilot Chat，切换到 Agent mode，在 tools picker 中启用 `yuzemcptool`。
+
+### 5. 验证连接
+
+1. 打开 Unity 并打开 `YuzeToolkit/MCP/Server Window`。
+2. 确认 endpoint 是 `http://127.0.0.1:3100/mcp`，并且 server 在运行。
+3. 配置 MCP 客户端。
+4. 让客户端列出 MCP tools，应看到 `evalJsCode`。
+
+推荐第一条提示词：
+
+```text
+Use the Unity MCP tool. First call evalJsCode to import YuzeToolkit/mcp/index.mjs and read its description. Then inspect the current Unity state before making changes.
+```
+
+### 故障排查
+
+| 问题 | 检查 |
+|---|---|
+| 客户端无法连接 | Unity 已打开、Server Window 显示 running、`3100` 端口空闲、URL 以 `/mcp` 结尾。 |
+| 看不到 tools | 客户端使用 HTTP / Streamable HTTP（不是 stdio），并连接 `/mcp`，不是 `/health`。 |
+| `Session not found` | 重新 initialize 或重启 MCP 客户端。Domain Reload 或 server 重启会让 session 失效。 |
+| 编译期间 tool 调用失败 | 等 Unity 编译或资源刷新结束后重试。 |
+| Player 中 Editor helper 失败 | Editor helper 依赖 `UnityEditor`；Runtime/Player 中改用 Runtime helper。 |
 
 ## 功能地图
 
@@ -135,13 +265,13 @@ VS Code 示例：
 
 ## 设计取舍
 
-YuzeMcpTool 刻意只暴露一个 MCP tool：
+YuzeMcpTool 只暴露一个 MCP tool：
 
 ```text
 evalJsCode
 ```
 
-AI 在 Unity 内运行 JavaScript，并从这些路径 import helper module：
+Agent 在 Unity 内运行 JavaScript，并从下面这些路径 import helper module：
 
 ```text
 YuzeToolkit/mcp/index.mjs
@@ -149,52 +279,37 @@ YuzeToolkit/mcp/Runtime/*.mjs
 YuzeToolkit/mcp/Editor/*.mjs
 ```
 
-这样 MCP 工具列表很小且稳定，同时仍能覆盖大量 Unity 自动化需求。
+MCP 工具列表保持很小且稳定，helper 层覆盖日常 Unity 自动化。
 
-### 和其他 Unity MCP 插件相比
+### 和多工具型 Unity MCP 插件对比
 
 | 方案 | 更适合 | 代价 |
 |---|---|---|
-| YuzeMcpTool | 自定义自动化、项目专用调试、Runtime/Player 检查、任意 Unity 侧 JavaScript。 | Agent 必须能写和修 JavaScript；常见 Editor 操作不如“大工具列表”直观。 |
-| 大工具集 Unity MCP 插件 | 开箱即用的 Editor-only 工作流、可见工具目录、Agent 少写脚本。 | 如果插件没有正好需要的工具，自定义多步骤流程会更受限制。 |
+| YuzeMcpTool | 自定义自动化、项目专用调试、Runtime/Player 检查、任意 Unity 侧 JavaScript。 | Agent 必须能写有效的 JavaScript；常见 Editor 操作不如长工具列表直观。 |
+| 多工具插件 | 开箱即用的 Editor 工作流、可见的工具目录。 | 当插件没有正好对应的工具时，多步骤自定义流程难以表达。 |
 
-### 为什么不用 PuerTS 自带 MCP
+### 与 PuerTS 自带 MCP 的关系
 
-PuerTS 也有 MCP 相关支持，但本包没有直接使用它。原因是这里需要更多 Unity 专用 helper、显式安全确认、session 监控、Runtime/Player 支持，以及可预测的单 tool 行为。本地使用时，PuerTS 自带 MCP 的工具面也偏少，不足以支撑这个包的工作流，稳定性也不适合作为主入口。
+PuerTS 自带一个 MCP 相关 package（`com.tencent.puerts.mcp`）。YuzeMcpTool 是独立的：自带 MCP server、session 跟踪、Unity 专用 helper module、安全标志和 Runtime/Player 支持，不依赖也不会干扰 PuerTS 的 MCP 包。
 
 ## 自己扩展工具
 
-如果 helper 覆盖不了你的项目需求，推荐直接扩展这个包：
+如果 helper 覆盖不了你的项目需求，直接扩展这个包：
 
-1. 只是编排现有能力时，优先在 `Resources/YuzeToolkit/mcp/Runtime` 或 `Resources/YuzeToolkit/mcp/Editor` 增加 JavaScript helper。
-2. 需要 Unity API、Editor API、异步 Unity 流程或安全确认时，再新增或扩展 C# bridge command。
-3. 新 helper 记到 `docs/HELPER_MODULES_zh.md`；危险操作记到 `docs/ADVANCED_USAGE_zh.md`。
-4. 深改 server、bridge、session 或 helper 结构前，让你的 AI 先读 [项目设计](docs/PROJECT_DESIGN_zh.md)。
+1. 只是编排现有能力时，在 `Resources/YuzeToolkit/mcp/Runtime` 或 `Resources/YuzeToolkit/mcp/Editor` 增加 JavaScript helper。
+2. 需要 Unity API、异步 Unity 流程或显式安全检查时，新增或扩展 C# bridge command。
+3. 新 helper 更新到 [Helper 参考](docs/HELPER_MODULES_zh.md)；破坏性操作更新到 [高级说明](docs/ADVANCED_USAGE_zh.md)。
+4. 改 server、bridge、session 或 helper 架构前，先读 [项目设计](docs/PROJECT_DESIGN_zh.md)。
 
 ## 文档
 
 | 文档 | 用途 |
 |---|---|
-| [客户端设置](docs/CLIENT_SETUP_zh.md) | 安装、启动、配置 MCP 客户端、验证连接。 |
+| [README](README_zh.md) | 安装 PuerTS、安装 YuzeMcpTool、配置 MCP 客户端、验证连接。 |
 | [Helper 参考](docs/HELPER_MODULES_zh.md) | Runtime 和 Editor helper module 目录。 |
-| [项目设计](docs/PROJECT_DESIGN_zh.md) | 架构、请求流程、扩展点和维护注意事项。 |
-| [高级说明](docs/ADVANCED_USAGE_zh.md) | 直接 bridge 调用、PuerTS interop、安全、Domain Reload、迁移说明。 |
+| [项目设计](docs/PROJECT_DESIGN_zh.md) | 架构、请求流程、扩展点、生命周期规则。 |
+| [高级说明](docs/ADVANCED_USAGE_zh.md) | 直接 bridge 调用、PuerTS C# interop、安全标志、Domain Reload。 |
 | [English README](README.md) | 英文概览和快速开始。 |
-
-## 状态与保证
-
-这个项目整体由 AI 实现。它是可修改源码和实用参考实现，不是有保证的产品。
-
-不对正确性、稳定性、完整性、安全性或生产适用性做保证。如果缺功能或有 bug，推荐让你自己的 AI Agent 检查并修改这个包，让它适配你的项目。
-
-## AI Agent 参考
-
-大多数人类读者可以读到这里就停下。详细 API 参考在 docs：
-
-- 从 [Helper 参考](docs/HELPER_MODULES_zh.md) 开始。
-- 深改 server、bridge、session 或 helper 架构前，先读 [项目设计](docs/PROJECT_DESIGN_zh.md)。
-- 需要直接 bridge 调用或 PuerTS C# interop 时看 [高级说明](docs/ADVANCED_USAGE_zh.md)。
-- 连接或 session 出问题时看 [客户端设置](docs/CLIENT_SETUP_zh.md)。
 
 最小 `evalJsCode` 调用：
 
@@ -204,6 +319,12 @@ async function execute() {
   return index.description;
 }
 ```
+
+## 状态与保证
+
+这个项目整体由 AI 实现。它是可修改源码和实用参考实现，不是有保证的产品。
+
+不对正确性、稳定性、完整性、安全性或生产适用性做保证。如果缺功能或有 bug，推荐让你自己的 AI Agent 检查并修改这个包以适配你的项目。
 
 ## License
 

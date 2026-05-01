@@ -6,53 +6,92 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![AI Built](https://img.shields.io/badge/Built%20by-AI-orange)](#status-and-guarantee)
 
-[中文](README_zh.md) | [Client setup](docs/CLIENT_SETUP.md) | [Helper reference](docs/HELPER_MODULES.md) | [Project design](docs/PROJECT_DESIGN.md) | [Advanced notes](docs/ADVANCED_USAGE.md)
+[中文](README_zh.md) | [Helper reference](docs/HELPER_MODULES.md) | [Project design](docs/PROJECT_DESIGN.md) | [Advanced notes](docs/ADVANCED_USAGE.md)
 
-YuzeMcpTool is a Unity MCP service for AI agents. It exposes one MCP tool, `evalJsCode`, so an agent can run JavaScript inside Unity through PuerTS and use helper modules to inspect or operate the Editor, scenes, assets, runtime objects, tests, builds, and project-specific C# APIs.
+YuzeMcpTool is a Unity-side MCP server for AI agents. It exposes one MCP tool — `evalJsCode` — which runs agent-supplied JavaScript inside Unity through PuerTS. Helper modules cover Editor and Runtime/Player workflows: scenes, GameObjects, components, assets, prefabs, importers, serialized fields, tests, builds, validation, and project-specific C# APIs.
 
 ![YuzeMcpTool overview](docs/Images/YuzeMcpTool-Overview.png)
 
 ## What It Does
 
-Use this package when you want an AI agent to work inside Unity instead of only editing files from the outside.
+Use this package when you want an AI agent to operate inside Unity rather than only edit files from the outside.
 
-- Inspect Unity Editor or Runtime/Player state.
-- Query and edit GameObjects, Components, scenes, assets, Prefabs, importers, and serialized fields.
-- Read logs, run validation, run tests, and inspect build settings.
-- Run custom JavaScript in Unity for project-specific debugging.
-- Extend the package itself when a helper or bridge command is missing.
+- Inspect Editor and Runtime/Player state.
+- Query and edit GameObjects, Components, scenes, assets, Prefabs, importers, serialized fields.
+- Read logs, run validation, run tests, inspect build settings.
+- Run project-specific JavaScript for ad-hoc debugging.
+- Extend the package directly when a helper or bridge command is missing.
 
-YuzeMcpTool is intentionally script-first. Instead of exposing dozens of separate MCP tools, it gives the agent one stable entry point and lets it run Unity-aware JavaScript inside the project.
+The design is script-first: one stable MCP tool plus a JavaScript helper layer the agent imports as needed. The MCP surface stays small while the helper layer covers broad Unity automation.
 
 ## Quick Start
 
-### 1. Install The Package
+### 1. Install PuerTS First
 
-Embedded package:
+YuzeMcpTool runs JavaScript inside Unity through PuerTS. Install both before adding this package:
+
+- `com.tencent.puerts.core` — PuerTS core
+- One JavaScript backend — pick one of `com.tencent.puerts.v8`, `com.tencent.puerts.quickjs`, `com.tencent.puerts.nodejs`, `com.tencent.puerts.webgl`
+
+Follow the official install steps:
+
+- [PuerTS Unity install guide](https://puerts.github.io/en/docs/puerts/unity/install/)
+- [PuerTS GitHub repository](https://github.com/Tencent/puerts)
+
+YuzeMcpTool does not depend on, replace, or install PuerTS's own `com.tencent.puerts.mcp` package.
+
+### 2. Install YuzeMcpTool
+
+Choose one of the following install methods.
+
+#### Direct Download
+
+1. Download the YuzeMcpTool source or release archive from [GitHub](https://github.com/Yuze075/YuzeMcpTool).
+2. Extract the archive to a local folder.
+3. Confirm the extracted package folder contains `package.json`, `README.md`, `Runtime`, `Editor`, and `Resources`.
+4. Open your Unity project.
+5. Open `Window/Package Manager`.
+6. Click `+`.
+7. Choose `Add package from disk...`.
+8. Select the extracted package folder's `package.json`.
+9. Wait for Unity to import and compile the package.
+
+To use it as an embedded package instead, copy the extracted folder to:
 
 ```text
 Packages/com.yuzetoolkit.mcptool
 ```
 
-Unity Package Manager Git URL:
+Then reopen or refocus Unity and wait for package import.
+
+#### GitHub URL
+
+Unity Package Manager UI:
+
+1. Open your Unity project.
+2. Open `Window/Package Manager`.
+3. Click `+`.
+4. Choose `Add package from git URL...`.
+5. Paste:
 
 ```text
 https://github.com/Yuze075/YuzeMcpTool.git
 ```
 
-Requirements:
+6. Click `Add`.
+7. Wait for Unity to resolve, import, and compile the package.
 
-| Dependency | Version / note |
-|---|---|
-| Unity | `2022.3` or newer |
-| PuerTS | [`com.tencent.puerts.core`](https://github.com/Tencent/puerts) `3.0.0` plus one backend package such as `com.tencent.puerts.v8`, `quickjs`, `nodejs`, or `webgl`. |
-| Unity Test Framework | `com.unity.test-framework` `1.4.0` |
+Or edit `Packages/manifest.json` manually and add the entry alongside your existing dependencies:
 
-This repository already contains embedded PuerTS packages under `Packages/com.tencent.puerts.*`. If you install YuzeMcpTool into another Unity project, install PuerTS first or let Unity resolve it from your package source. See the official [PuerTS Unity install guide](https://puerts.github.io/docs/puerts/unity/install/).
+```json
+{
+  "dependencies": {
+    "com.yuzetoolkit.mcptool": "https://github.com/Yuze075/YuzeMcpTool.git"
+  }
+}
+```
 
-YuzeMcpTool uses the PuerTS runtime and backend packages. It does not require or install PuerTS's own `com.tencent.puerts.mcp` package.
-
-### 2. Start Unity
+### 3. Start Unity And Check The Server
 
 The MCP server starts automatically in the Unity Editor.
 
@@ -60,39 +99,34 @@ The MCP server starts automatically in the Unity Editor.
 |---|---|
 | MCP endpoint | `http://127.0.0.1:3100/mcp` |
 | Health check | `http://127.0.0.1:3100/health` |
+| Transport | Streamable HTTP / HTTP |
 | Server window | `YuzeToolkit/MCP/Server Window` |
+| Exposed MCP tool | `evalJsCode` |
 
-Use the server window to start/stop the server, copy the endpoint, and inspect active sessions or recent errors.
+Open `YuzeToolkit/MCP/Server Window` to start or stop the server, copy the endpoint, or inspect active sessions and recent errors.
 
-### 3. Connect Your AI Client
+### 4. Configure Your MCP Client
 
-Configure your MCP client to use Streamable HTTP:
+All examples below point to the default local endpoint:
 
 ```text
 http://127.0.0.1:3100/mcp
 ```
 
-After connecting, ask the agent to list MCP tools. It should see only `evalJsCode`.
+Keep the server bound to loopback unless you intentionally control the network environment.
 
-Recommended first prompt:
+#### Claude Code
 
-```text
-Use the Unity MCP tool. First call evalJsCode to import YuzeToolkit/mcp/index.mjs and read its description. Then inspect the current Unity state before making changes.
+CLI:
+
+```bash
+claude mcp add --transport http yuzemcptool --scope project http://127.0.0.1:3100/mcp
+claude mcp list
 ```
 
-## MCP Client Configuration
+Project-scope config is written to `.mcp.json` at the project root. Local and user scopes go to `~/.claude.json`.
 
-Different clients use slightly different config formats.
-
-| Client | Recommended setup |
-|---|---|
-| Claude Code | `claude mcp add --transport http yuzemcptool http://127.0.0.1:3100/mcp` |
-| Cursor | Add `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` globally. |
-| VS Code / GitHub Copilot | Add `.vscode/mcp.json` or use the MCP server UI. VS Code uses `servers`. |
-| Windsurf | Prefer the Cascade MCP UI. Raw JSON config can vary by version. |
-| Claude Desktop | Prefer a Desktop Extension (`.mcpb`) or wrapper if direct local HTTP is unavailable. Claude Code is simpler for direct HTTP. |
-
-Cursor example:
+Manual `.mcp.json`:
 
 ```json
 {
@@ -105,7 +139,75 @@ Cursor example:
 }
 ```
 
-VS Code example:
+Inside Claude Code, run `/mcp` to inspect or authenticate configured servers.
+
+#### Codex
+
+CLI:
+
+```bash
+codex mcp add yuzemcptool --url http://127.0.0.1:3100/mcp
+codex mcp list
+```
+
+Codex CLI and the Codex IDE extension share configuration at `~/.codex/config.toml`. Manual TOML:
+
+```toml
+[mcp_servers.yuzemcptool]
+url = "http://127.0.0.1:3100/mcp"
+```
+
+Restart Codex or reload its MCP config after editing the file directly.
+
+#### Cursor
+
+Project config: `.cursor/mcp.json`. Global config: `~/.cursor/mcp.json`.
+
+```json
+{
+  "mcpServers": {
+    "yuzemcptool": {
+      "type": "http",
+      "url": "http://127.0.0.1:3100/mcp"
+    }
+  }
+}
+```
+
+In the Cursor app, open Settings → MCP to add or enable the server. CLI:
+
+```bash
+cursor-agent mcp list
+cursor-agent mcp list-tools yuzemcptool
+```
+
+#### Gemini CLI
+
+CLI:
+
+```bash
+gemini mcp add --transport http yuzemcptool http://127.0.0.1:3100/mcp
+gemini mcp list
+```
+
+Project config: `.gemini/settings.json`. User config: `~/.gemini/settings.json`.
+
+```json
+{
+  "mcpServers": {
+    "yuzemcptool": {
+      "httpUrl": "http://127.0.0.1:3100/mcp",
+      "trust": false
+    }
+  }
+}
+```
+
+Use `--scope user` with `gemini mcp add` to make the server available outside the current project.
+
+#### VS Code / GitHub Copilot
+
+Workspace config: `.vscode/mcp.json`.
 
 ```json
 {
@@ -118,7 +220,35 @@ VS Code example:
 }
 ```
 
-See [Client setup](docs/CLIENT_SETUP.md) for more details and troubleshooting.
+UI flow:
+
+1. Open the Command Palette.
+2. Run `MCP: Add Server` or `MCP: Open Workspace Folder MCP Configuration`.
+3. Choose HTTP / Streamable HTTP and enter `http://127.0.0.1:3100/mcp`.
+4. Open GitHub Copilot Chat, switch to Agent mode, and enable `yuzemcptool` in the tools picker.
+
+### 5. Verify The Connection
+
+1. Open Unity and open `YuzeToolkit/MCP/Server Window`.
+2. Confirm the endpoint is `http://127.0.0.1:3100/mcp` and the server is running.
+3. Configure your MCP client.
+4. Ask the client to list MCP tools — you should see `evalJsCode`.
+
+Recommended first prompt:
+
+```text
+Use the Unity MCP tool. First call evalJsCode to import YuzeToolkit/mcp/index.mjs and read its description. Then inspect the current Unity state before making changes.
+```
+
+### Troubleshooting
+
+| Problem | What to check |
+|---|---|
+| Client cannot connect | Unity is open, the server window says running, port `3100` is free, the URL ends in `/mcp`. |
+| No tools appear | Client uses HTTP / Streamable HTTP (not stdio) and points to `/mcp`, not `/health`. |
+| `Session not found` | Reinitialize or restart the MCP client. Domain Reload or a server restart invalidates sessions. |
+| Tool calls fail during compile | Wait for Unity compilation or asset refresh to finish, then retry. |
+| Editor helper fails in Player | Editor helpers require `UnityEditor`; use Runtime helpers in Runtime/Player. |
 
 ## Feature Map
 
@@ -135,13 +265,13 @@ See [Client setup](docs/CLIENT_SETUP.md) for more details and troubleshooting.
 
 ## Design Choice
 
-YuzeMcpTool intentionally exposes one MCP tool:
+YuzeMcpTool exposes one MCP tool:
 
 ```text
 evalJsCode
 ```
 
-The AI runs JavaScript inside Unity and imports helper modules from:
+The agent runs JavaScript inside Unity and imports helper modules from:
 
 ```text
 YuzeToolkit/mcp/index.mjs
@@ -149,52 +279,37 @@ YuzeToolkit/mcp/Runtime/*.mjs
 YuzeToolkit/mcp/Editor/*.mjs
 ```
 
-This keeps the MCP tool list small and stable while still allowing broad Unity automation.
+The MCP tool list stays small and stable while the helper layer covers everyday Unity automation.
 
-### Compared With Other Unity MCP Plugins
+### Compared With Multi-Tool Unity MCP Plugins
 
 | Choice | Better for | Tradeoff |
 |---|---|---|
-| YuzeMcpTool | Custom automation, project-specific debugging, Runtime/Player inspection, arbitrary Unity-side JavaScript. | The agent must be able to write and debug JavaScript; common Editor tasks are less discoverable than a large named-tool list. |
-| Large toolset Unity MCP plugins | Immediate Editor-only workflows, visible tool catalog, less scripting by the agent. | Harder to express custom multi-step workflows unless the plugin already has the exact tool. |
+| YuzeMcpTool | Custom automation, project-specific debugging, Runtime/Player inspection, arbitrary Unity-side JavaScript. | Agent must write valid JavaScript; common Editor tasks are less discoverable than a long named-tool list. |
+| Multi-tool plugins | Out-of-the-box Editor workflows with a visible tool catalog. | Hard to express custom multi-step workflows when the plugin lacks the exact tool you need. |
 
-### Why Not PuerTS Built-In MCP
+### Relationship To PuerTS's Built-In MCP
 
-PuerTS already has MCP-related support, but this package keeps its own MCP server because the intended workflow needs more Unity-specific helpers, explicit safety flags, session monitoring, Runtime/Player support, and predictable single-tool behavior. In local use, the built-in PuerTS MCP surface was also too small for this package's workflow and not stable enough to rely on as the main interface.
+PuerTS ships its own MCP-related package (`com.tencent.puerts.mcp`). YuzeMcpTool is independent: it includes its own MCP server, session tracking, Unity-aware helper modules, safety flags, and Runtime/Player support, and does not require or interfere with the PuerTS MCP package.
 
 ## Extending The Package
 
-If a helper does not cover your project, extend the package instead of waiting for upstream support:
+If a helper does not cover your project, extend the package directly:
 
-1. Prefer a JavaScript helper in `Resources/YuzeToolkit/mcp/Runtime` or `Resources/YuzeToolkit/mcp/Editor` when the behavior is just orchestration.
-2. Add or extend a C# bridge command when the operation needs Unity APIs, Editor APIs, async Unity workflows, or safety checks.
-3. Document the new helper in `docs/HELPER_MODULES.md` and any dangerous operation in `docs/ADVANCED_USAGE.md`.
-4. Let your AI agent read [Project design](docs/PROJECT_DESIGN.md) before making deeper changes.
+1. Add a JavaScript helper under `Resources/YuzeToolkit/mcp/Runtime` or `Resources/YuzeToolkit/mcp/Editor` when the behavior is just orchestration.
+2. Add or extend a C# bridge command when the operation needs Unity APIs, async Unity workflows, or explicit safety checks.
+3. Update [Helper reference](docs/HELPER_MODULES.md) when you add a helper, and [Advanced notes](docs/ADVANCED_USAGE.md) when you add a destructive operation.
+4. Read [Project design](docs/PROJECT_DESIGN.md) before changing the server, bridge, session, or helper architecture.
 
 ## Documentation
 
 | Document | Purpose |
 |---|---|
-| [Client setup](docs/CLIENT_SETUP.md) | Install, start, configure MCP clients, verify connection. |
+| [README](README.md) | Install PuerTS, install YuzeMcpTool, configure MCP clients, verify the connection. |
 | [Helper reference](docs/HELPER_MODULES.md) | Runtime and Editor helper module catalog. |
-| [Project design](docs/PROJECT_DESIGN.md) | Architecture, request flow, extension points, and maintenance notes. |
-| [Advanced notes](docs/ADVANCED_USAGE.md) | Direct bridge calls, PuerTS interop, safety, Domain Reload, migration notes. |
+| [Project design](docs/PROJECT_DESIGN.md) | Architecture, request flow, extension points, lifecycle rules. |
+| [Advanced notes](docs/ADVANCED_USAGE.md) | Direct bridge calls, PuerTS C# interop, safety flags, Domain Reload. |
 | [中文 README](README_zh.md) | Chinese overview and quick start. |
-
-## Status And Guarantee
-
-This project is implemented entirely by AI. It is provided as editable source code and a practical reference implementation, not as a guaranteed product.
-
-No guarantee is made for correctness, stability, completeness, security, or production suitability. If a feature is missing or broken, the intended workflow is to let your own AI agent inspect and modify this package for your project.
-
-## AI Agent Reference
-
-Most human readers can stop here. The rest of the detailed API reference lives in the docs:
-
-- Start with [Helper reference](docs/HELPER_MODULES.md).
-- Read [Project design](docs/PROJECT_DESIGN.md) before changing server, bridge, session, or helper architecture.
-- Use [Advanced notes](docs/ADVANCED_USAGE.md) for direct bridge calls and PuerTS C# interop.
-- Use [Client setup](docs/CLIENT_SETUP.md) if connection or session handling fails.
 
 Minimal `evalJsCode` call:
 
@@ -204,6 +319,12 @@ async function execute() {
   return index.description;
 }
 ```
+
+## Status And Guarantee
+
+This project is implemented entirely by AI. It is provided as editable source and a practical reference implementation, not as a guaranteed product.
+
+No guarantee is made for correctness, stability, completeness, security, or production suitability. If a feature is missing or broken, the intended workflow is to let your own AI agent inspect and modify this package for your project.
 
 ## License
 

@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
 using UnityEditor.TestTools.TestRunner.Api;
+#endif
 using UnityEngine;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
@@ -227,12 +229,18 @@ namespace YuzeToolkit
 
     internal static class PipelineRequestStore
     {
+        public const string TestFrameworkUnavailableMessage = "Unity Test Framework support is unavailable. Install com.unity.test-framework 1.4.0 or newer so YUZE_USE_UNITY_TEST_FRAMEWORK is defined.";
+
         private static readonly Dictionary<string, TrackedPackageRequest> PackageRequests = new(StringComparer.Ordinal);
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
         private static readonly Dictionary<string, TrackedTestRun> TestRuns = new(StringComparer.Ordinal);
+#endif
         private static readonly Dictionary<string, object> Builds = new(StringComparer.Ordinal);
         private static readonly object SyncRoot = new();
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
         private static TestRunnerApi? _testRunner;
         private static bool _callbacksRegistered;
+#endif
 
         public static string TrackPackageRequest(string kind, string label, Request request)
         {
@@ -252,6 +260,7 @@ namespace YuzeToolkit
             }
         }
 
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
         public static string TrackTestRun(string mode, string executionId)
         {
             lock (SyncRoot)
@@ -294,6 +303,7 @@ namespace YuzeToolkit
                     tracked.Complete(result);
             }
         }
+#endif
 
         public static string TrackBuild(object summary)
         {
@@ -369,6 +379,7 @@ namespace YuzeToolkit
             public DateTime StartedAtUtc { get; }
         }
 
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
         private sealed class TrackedTestRun
         {
             private object? _result;
@@ -405,6 +416,7 @@ namespace YuzeToolkit
                     ("result", _result)
                 );
         }
+#endif
     }
 
     internal sealed class PipelinePackageListCommand : IMcpCommand
@@ -488,6 +500,7 @@ namespace YuzeToolkit
 
         public Task<string> ExecuteAsync(McpCommandContext context)
         {
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
             var args = CommandUtilities.ParseArgs(context.ArgumentsJson);
             var modeText = CommandUtilities.GetString(args, "mode", "EditMode");
             var mode = modeText.Equals("PlayMode", StringComparison.OrdinalIgnoreCase) ? TestMode.PlayMode : TestMode.EditMode;
@@ -495,6 +508,9 @@ namespace YuzeToolkit
             var executionId = PipelineRequestStore.TestRunner.Execute(new ExecutionSettings(filter));
             PipelineRequestStore.TrackTestRun(mode.ToString(), executionId);
             return Task.FromResult(McpBridge.Success(PipelineRequestStore.GetTestRun(executionId)));
+#else
+            return Task.FromResult(McpBridge.Error(PipelineRequestStore.TestFrameworkUnavailableMessage));
+#endif
         }
     }
 
@@ -505,8 +521,12 @@ namespace YuzeToolkit
 
         public Task<string> ExecuteAsync(McpCommandContext context)
         {
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
             var id = CommandUtilities.GetString(CommandUtilities.ParseArgs(context.ArgumentsJson), "id");
             return Task.FromResult(McpBridge.Success(PipelineRequestStore.GetTestRun(id)));
+#else
+            return Task.FromResult(McpBridge.Error(PipelineRequestStore.TestFrameworkUnavailableMessage));
+#endif
         }
     }
 
@@ -545,6 +565,7 @@ namespace YuzeToolkit
         }
     }
 
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
     internal sealed class PipelineTestCallbacks : ICallbacks
     {
         public void RunStarted(ITestAdaptor testsToRun) { }
@@ -555,6 +576,7 @@ namespace YuzeToolkit
 
         public void TestFinished(ITestResultAdaptor result) { }
     }
+#endif
 
     internal sealed class ValidationExecuteCommand : IMcpCommand
     {
@@ -749,6 +771,7 @@ namespace YuzeToolkit
         }
     }
 
+#if YUZE_USE_UNITY_TEST_FRAMEWORK
     internal static class TestResultSummaryUtility
     {
         public static object Summarize(ITestResultAdaptor result, int depth)
@@ -775,4 +798,5 @@ namespace YuzeToolkit
             );
         }
     }
+#endif
 }

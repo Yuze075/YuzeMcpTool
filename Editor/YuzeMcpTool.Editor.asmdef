@@ -41,6 +41,11 @@
       "name": "com.tencent.puerts.webgl",
       "expression": "3.0.0",
       "define": "YUZE_USE_PUER_TS_WEBGL"
+    },
+    {
+      "name": "com.unity.test-framework",
+      "expression": "1.4.0",
+      "define": "YUZE_USE_UNITY_TEST_FRAMEWORK"
     }
   ],
   "noEngineReferences": false

@@ -1,6 +1,6 @@
 # Helper Reference
 
-[README](../README.md) | [中文](HELPER_MODULES_zh.md) | [Client setup](CLIENT_SETUP.md) | [Project design](PROJECT_DESIGN.md) | [Advanced notes](ADVANCED_USAGE.md)
+[README](../README.md) | [中文](HELPER_MODULES_zh.md) | [Project design](PROJECT_DESIGN.md) | [Advanced notes](ADVANCED_USAGE.md)
 
 [![Runtime](https://img.shields.io/badge/Runtime-5%20modules-2ecc71)](#runtime-helpers)
 [![Editor](https://img.shields.io/badge/Editor-9%20modules-3498db)](#editor-helpers)
@@ -209,7 +209,7 @@ Package Manager, Test Runner, and BuildPipeline workflows.
 | `removePackage(packageName, confirm)` | Remove a package. | Requires `confirm: true` |
 | `searchPackages(packageName)` | Search package registry. | Read-only/request |
 | `getPackageRequest(id)` | Poll package request. | Read-only |
-| `runTests(mode)` / `getTestRun(id)` | Run or poll tests. | Test-dependent |
+| `runTests(mode)` / `getTestRun(id)` | Run or poll tests. | Optional Test Framework; unsupported without it |
 | `getBuildSettings()` | Read build scenes and target. | Read-only |
 | `buildPlayer(locationPathName, confirm)` | Build player. | Requires `confirm: true` |
 | `getBuild(id)` | Poll build request. | Read-only |

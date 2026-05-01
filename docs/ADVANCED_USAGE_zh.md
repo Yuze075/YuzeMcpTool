@@ -1,12 +1,12 @@
 # 高级说明
 
-[README](../README_zh.md) | [English](ADVANCED_USAGE.md) | [客户端设置](CLIENT_SETUP_zh.md) | [Helper 参考](HELPER_MODULES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md)
+[README](../README_zh.md) | [English](ADVANCED_USAGE.md) | [Helper 参考](HELPER_MODULES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md)
 
 [![Bridge](https://img.shields.io/badge/Bridge-Commands-9b59b6)](#bridge-commands)
 [![PuerTS](https://img.shields.io/badge/PuerTS-C%23%20Interop-00a8ff)](#puerts-c-interop)
 [![Safety](https://img.shields.io/badge/Safety-confirm%20required-e67e22)](#安全确认参数)
 
-本文面向 Agent 和维护者，说明底层 bridge command、直接 PuerTS C# interop、安全确认参数、Domain Reload 规则、旧 helper 迁移和排错。
+本文面向 Agent 和维护者，说明底层 bridge command、直接 PuerTS C# interop、安全确认参数、Domain Reload 规则和排错。
 
 ## Bridge Commands
 
@@ -183,29 +183,6 @@ bridge command 做项目文件 IO 时，路径会解析到 Unity 项目根目录
 | `Assets/Settings/GameSettings.asset` | `../outside-project/file.txt` |
 | `Packages/com.yuzetoolkit.mcptool/README.md` | `C:/Users/Name/Desktop/file.txt` |
 | `Temp/YuzeMcpTool-GameView.png` | 网络路径或无关绝对路径 |
-
-## Helper 路径迁移
-
-| 旧路径 | 新路径 / 函数 |
-|---|---|
-| `Runtime/runtime-state.mjs` | `Runtime/runtime.mjs#getState()` |
-| `Runtime/unity-log.mjs` | `Runtime/runtime.mjs#getRecentLogs()` / `clearLogs()` |
-| `Runtime/batch.mjs` | `Runtime/runtime.mjs#executeBatch()` |
-| `Runtime/object-query.mjs` | `Runtime/objects.mjs#find()` / `get()` |
-| `Runtime/object-edit.mjs` | `Runtime/objects.mjs#create()` / `destroy()` / `setTransform()` |
-| `Runtime/component.mjs` | `Runtime/components.mjs` |
-| `Runtime/runtime-inspect.mjs` | `Runtime/diagnostics.mjs` |
-| `Editor/editor-state.mjs` | `Editor/editor.mjs#getState()` |
-| `Editor/compilation.mjs` | `Editor/editor.mjs#getCompilationState()` / `scheduleAssetRefresh()` |
-| `Editor/selection.mjs` | `Editor/editor.mjs#getSelection()` / `setSelection()` |
-| `Editor/menu-command.mjs` | `Editor/editor.mjs#executeMenuItem()` |
-| `Editor/screenshot.mjs` | `Editor/editor.mjs#screenshotGameView()` |
-| `Editor/asset-db.mjs` | `Editor/assets.mjs` |
-| `Editor/scene.mjs` | `Editor/scenes.mjs` |
-| `Editor/prefab.mjs` | `Editor/prefabs.mjs` |
-| `Editor/serialized-object.mjs` | `Editor/serialized.mjs` |
-| `Editor/package-manager.mjs` / `Editor/test-runner.mjs` / `Editor/build.mjs` | `Editor/pipeline.mjs` |
-| `Editor/editor-inspect.mjs` | `Editor/project.mjs` |
 
 ## 故障排查
 

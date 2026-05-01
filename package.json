@@ -10,7 +10,6 @@
     "url": "https://github.com/Yuze075"
   },
   "dependencies": {
-    "com.unity.test-framework": "1.4.0",
     "com.tencent.puerts.core": "3.0.0"
   }
 }

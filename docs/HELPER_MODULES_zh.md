@@ -1,6 +1,6 @@
 # Helper 参考
 
-[README](../README_zh.md) | [English](HELPER_MODULES.md) | [客户端设置](CLIENT_SETUP_zh.md) | [项目设计](PROJECT_DESIGN_zh.md) | [高级说明](ADVANCED_USAGE_zh.md)
+[README](../README_zh.md) | [English](HELPER_MODULES.md) | [项目设计](PROJECT_DESIGN_zh.md) | [高级说明](ADVANCED_USAGE_zh.md)
 
 [![Runtime](https://img.shields.io/badge/Runtime-5%20modules-2ecc71)](#runtime-helpers)
 [![Editor](https://img.shields.io/badge/Editor-9%20modules-3498db)](#editor-helpers)
@@ -209,7 +209,7 @@ Package Manager、Test Runner 和 BuildPipeline 工作流。
 | `removePackage(packageName, confirm)` | 移除 package。 | 需要 `confirm: true` |
 | `searchPackages(packageName)` | 搜索 package registry。 | 只读/request |
 | `getPackageRequest(id)` | 查询 package request。 | 只读 |
-| `runTests(mode)` / `getTestRun(id)` | 运行或查询测试。 | 取决于测试 |
+| `runTests(mode)` / `getTestRun(id)` | 运行或查询测试。 | 可选 Test Framework；未安装时不支持 |
 | `getBuildSettings()` | 读取 build scenes 和 target。 | 只读 |
 | `buildPlayer(locationPathName, confirm)` | 构建 player。 | 需要 `confirm: true` |
 | `getBuild(id)` | 查询 build request。 | 只读 |
