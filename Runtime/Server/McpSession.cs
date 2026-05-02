@@ -57,29 +57,29 @@ namespace YuzeToolkit
 
         public int FailedEvalCount { get; internal set; }
 
-        public int ActiveCommandCount { get; internal set; }
+        public int ActiveToolFunctionCount { get; internal set; }
 
-        public string CurrentCommandName { get; internal set; } = string.Empty;
+        public string CurrentToolFunctionName { get; internal set; } = string.Empty;
 
-        public DateTime CurrentCommandStartedAtUtc { get; internal set; }
+        public DateTime CurrentToolFunctionStartedAtUtc { get; internal set; }
 
-        public double CurrentCommandElapsedMs { get; internal set; }
+        public double CurrentToolFunctionElapsedMs { get; internal set; }
 
-        public bool HasLastCommand { get; internal set; }
+        public bool HasLastToolFunction { get; internal set; }
 
-        public string LastCommandName { get; internal set; } = string.Empty;
+        public string LastToolFunctionName { get; internal set; } = string.Empty;
 
-        public bool LastCommandSucceeded { get; internal set; }
+        public bool LastToolFunctionSucceeded { get; internal set; }
 
-        public DateTime LastCommandFinishedAtUtc { get; internal set; }
+        public DateTime LastToolFunctionFinishedAtUtc { get; internal set; }
 
-        public double LastCommandDurationMs { get; internal set; }
+        public double LastToolFunctionDurationMs { get; internal set; }
 
-        public string LastCommandError { get; internal set; } = string.Empty;
+        public string LastToolFunctionError { get; internal set; } = string.Empty;
 
-        public int TotalCommandCount { get; internal set; }
+        public int TotalToolFunctionCount { get; internal set; }
 
-        public int FailedCommandCount { get; internal set; }
+        public int FailedToolFunctionCount { get; internal set; }
     }
 
     internal sealed class McpSession : IDisposable
@@ -102,17 +102,18 @@ namespace YuzeToolkit
         private string _lastEvalError = string.Empty;
         private int _totalEvalCount;
         private int _failedEvalCount;
-        private int _activeCommandCount;
-        private string _currentCommandName = string.Empty;
-        private DateTime _currentCommandStartedAtUtc;
-        private bool _hasLastCommand;
-        private string _lastCommandName = string.Empty;
-        private bool _lastCommandSucceeded;
-        private DateTime _lastCommandFinishedAtUtc;
-        private double _lastCommandDurationMs;
-        private string _lastCommandError = string.Empty;
-        private int _totalCommandCount;
-        private int _failedCommandCount;
+        private int _activeToolFunctionCount;
+        private string _currentToolFunctionName = string.Empty;
+        private DateTime _currentToolFunctionStartedAtUtc;
+        private bool _hasLastToolFunction;
+        private string _lastToolFunctionName = string.Empty;
+        private bool _lastToolFunctionSucceeded;
+        private DateTime _lastToolFunctionFinishedAtUtc;
+        private double _lastToolFunctionDurationMs;
+        private string _lastToolFunctionError = string.Empty;
+        private int _totalToolFunctionCount;
+        private int _failedToolFunctionCount;
+        private bool _disposeWhenEvalCompletes;
 
         public McpSession(string id, string protocolVersion, string clientName)
         {
@@ -136,6 +137,14 @@ namespace YuzeToolkit
             get
             {
                 lock (_syncRoot) return _lastSeenUtc;
+            }
+        }
+
+        public bool IsEvalRunning
+        {
+            get
+            {
+                lock (_syncRoot) return _evalStatus == McpLogicExecutionStatus.Running;
             }
         }
 
@@ -183,38 +192,40 @@ namespace YuzeToolkit
                 _currentTimeoutSeconds = 0;
                 _currentResetSession = false;
             }
+
+            DisposePendingEvalSession();
         }
 
-        public void BeginCommand(string commandName)
+        public void BeginToolFunction(string toolFunctionName)
         {
             lock (_syncRoot)
             {
-                _activeCommandCount++;
-                _currentCommandName = commandName;
-                _currentCommandStartedAtUtc = DateTime.UtcNow;
+                _activeToolFunctionCount++;
+                _currentToolFunctionName = toolFunctionName;
+                _currentToolFunctionStartedAtUtc = DateTime.UtcNow;
             }
         }
 
-        public void CompleteCommand(string commandName, bool success, string error)
+        public void CompleteToolFunction(string toolFunctionName, bool success, string error)
         {
             lock (_syncRoot)
             {
                 var now = DateTime.UtcNow;
-                var startedAt = _currentCommandStartedAtUtc == default ? now : _currentCommandStartedAtUtc;
-                _hasLastCommand = true;
-                _lastCommandName = commandName;
-                _lastCommandSucceeded = success;
-                _lastCommandFinishedAtUtc = now;
-                _lastCommandDurationMs = Math.Max(0, (now - startedAt).TotalMilliseconds);
-                _lastCommandError = success ? string.Empty : error;
-                _totalCommandCount++;
-                if (!success) _failedCommandCount++;
+                var startedAt = _currentToolFunctionStartedAtUtc == default ? now : _currentToolFunctionStartedAtUtc;
+                _hasLastToolFunction = true;
+                _lastToolFunctionName = toolFunctionName;
+                _lastToolFunctionSucceeded = success;
+                _lastToolFunctionFinishedAtUtc = now;
+                _lastToolFunctionDurationMs = Math.Max(0, (now - startedAt).TotalMilliseconds);
+                _lastToolFunctionError = success ? string.Empty : error;
+                _totalToolFunctionCount++;
+                if (!success) _failedToolFunctionCount++;
 
-                _activeCommandCount = Math.Max(0, _activeCommandCount - 1);
-                if (_activeCommandCount == 0)
+                _activeToolFunctionCount = Math.Max(0, _activeToolFunctionCount - 1);
+                if (_activeToolFunctionCount == 0)
                 {
-                    _currentCommandName = string.Empty;
-                    _currentCommandStartedAtUtc = default;
+                    _currentToolFunctionName = string.Empty;
+                    _currentToolFunctionStartedAtUtc = default;
                 }
             }
         }
@@ -248,24 +259,48 @@ namespace YuzeToolkit
                     LastEvalError = _lastEvalError,
                     TotalEvalCount = _totalEvalCount,
                     FailedEvalCount = _failedEvalCount,
-                    ActiveCommandCount = _activeCommandCount,
-                    CurrentCommandName = _currentCommandName,
-                    CurrentCommandStartedAtUtc = _currentCommandStartedAtUtc,
-                    CurrentCommandElapsedMs = _currentCommandStartedAtUtc == default ? 0 : Math.Max(0, (now - _currentCommandStartedAtUtc).TotalMilliseconds),
-                    HasLastCommand = _hasLastCommand,
-                    LastCommandName = _lastCommandName,
-                    LastCommandSucceeded = _lastCommandSucceeded,
-                    LastCommandFinishedAtUtc = _lastCommandFinishedAtUtc,
-                    LastCommandDurationMs = _lastCommandDurationMs,
-                    LastCommandError = _lastCommandError,
-                    TotalCommandCount = _totalCommandCount,
-                    FailedCommandCount = _failedCommandCount,
+                    ActiveToolFunctionCount = _activeToolFunctionCount,
+                    CurrentToolFunctionName = _currentToolFunctionName,
+                    CurrentToolFunctionStartedAtUtc = _currentToolFunctionStartedAtUtc,
+                    CurrentToolFunctionElapsedMs = _currentToolFunctionStartedAtUtc == default ? 0 : Math.Max(0, (now - _currentToolFunctionStartedAtUtc).TotalMilliseconds),
+                    HasLastToolFunction = _hasLastToolFunction,
+                    LastToolFunctionName = _lastToolFunctionName,
+                    LastToolFunctionSucceeded = _lastToolFunctionSucceeded,
+                    LastToolFunctionFinishedAtUtc = _lastToolFunctionFinishedAtUtc,
+                    LastToolFunctionDurationMs = _lastToolFunctionDurationMs,
+                    LastToolFunctionError = _lastToolFunctionError,
+                    TotalToolFunctionCount = _totalToolFunctionCount,
+                    FailedToolFunctionCount = _failedToolFunctionCount,
                 };
             }
         }
 
         public void Dispose()
         {
+            if (IsEvalRunning)
+            {
+                lock (_syncRoot)
+                    _disposeWhenEvalCompletes = true;
+                return;
+            }
+
+            EvalSession?.Dispose();
+            EvalSession = null;
+        }
+
+        private void DisposePendingEvalSession()
+        {
+            var shouldDispose = false;
+            lock (_syncRoot)
+            {
+                if (_disposeWhenEvalCompletes && _evalStatus != McpLogicExecutionStatus.Running)
+                {
+                    _disposeWhenEvalCompletes = false;
+                    shouldDispose = true;
+                }
+            }
+
+            if (!shouldDispose) return;
             EvalSession?.Dispose();
             EvalSession = null;
         }

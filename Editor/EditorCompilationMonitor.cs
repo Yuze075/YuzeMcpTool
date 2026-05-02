@@ -1,6 +1,7 @@
 #nullable enable
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -27,10 +28,10 @@ namespace YuzeToolkit
             UnityLogBuffer.Start();
         }
 
-        public static object GetStateObject()
+        public static Dictionary<string, object?> GetStateObject()
         {
-            return LitJson.Obj(
-                ("environment", CommandUtilities.GetEnvironmentObject()),
+            return McpData.Obj(
+                ("environment", ToolUtilities.GetEnvironmentObject()),
                 ("isCompiling", EditorApplication.isCompiling),
                 ("isUpdating", EditorApplication.isUpdating),
                 ("isPlayingOrWillChangePlaymode", EditorApplication.isPlayingOrWillChangePlaymode),

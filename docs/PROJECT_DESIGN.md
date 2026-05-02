@@ -10,21 +10,21 @@ This page is for AI agents and maintainers. Most human users only need the READM
 
 ## Who Should Read This
 
-Read this page before changing server startup, MCP protocol handling, sessions, bridge commands, PuerTS eval, helper modules, or safety rules.
+Read this page before changing server startup, MCP protocol handling, sessions, C# tools, PuerTS eval, helper modules, or safety rules.
 
 If you only want to install and use the package, read [README](../README.md).
 
 ## Design Summary
 
-YuzeMcpTool runs a local MCP server inside Unity. The server exposes one MCP tool, `evalJsCode`. Each MCP client session owns a persistent PuerTS JavaScript VM. The agent submits an `async function execute() { ... }`, imports helper modules from `YuzeToolkit/mcp/...`, and receives a JSON-friendly result.
+YuzeMcpTool runs a local MCP server inside Unity. The server exposes one MCP tool, `evalJsCode`. Each MCP client session owns a persistent PuerTS JavaScript VM. The agent submits an `async function execute() { ... }`, imports helper modules from `tools/...` for common workflows, can directly call Unity/C# APIs through PuerTS `CS.*` when needed, and receives a JSON-friendly result.
 
 The package is designed around a small stable MCP surface and a scriptable Unity-side runtime:
 
 | Goal | Design choice |
 |---|---|
 | Keep MCP client integration simple | Expose only `evalJsCode`. |
-| Let AI handle project-specific workflows | Run custom JavaScript inside Unity through PuerTS. |
-| Keep common Unity tasks discoverable | Provide helper modules under `YuzeToolkit/mcp/Runtime` and `YuzeToolkit/mcp/Editor`. |
+| Let AI handle project-specific workflows | Run custom JavaScript and direct Unity/C# interop inside Unity through PuerTS. |
+| Keep common Unity tasks discoverable | Provide generated `tools/<name>` modules from registered C# classes that either implement `IMcpTool` or use `[McpTool]`, plus optional JavaScript Resources tools. |
 | Keep dangerous operations explicit | Require `confirm: true` or `confirmDangerous: true` where documented. |
 | Support Editor and Runtime/Player use | Runtime commands avoid `UnityEditor`; Editor commands are registered only in the Editor. |
 
@@ -32,27 +32,30 @@ The package is designed around a small stable MCP surface and a scriptable Unity
 
 | Area | Main files | Responsibility |
 |---|---|---|
-| Server | `Runtime/Server/McpServer.cs`, `McpServerOptions.cs`, `McpSession*.cs` | HTTP listener, `/mcp`, `/health`, JSON-RPC, session lifecycle, active session snapshots. |
-| Eval | `Runtime/Eval/EvalJsCodeTool.cs`, `PuerTsEvalSession.cs`, `McpScriptLoader.cs` | MCP tool definition, busy-state guard, per-session PuerTS VM, module loading from package Resources. |
-| Bridge | `Runtime/Bridge/*.cs` | C# command interface, command registry, command context, sync/async invocation from JavaScript. |
-| Runtime commands | `Runtime/Commands/*.cs` | Runtime-safe Unity state, logs, GameObjects, Components, diagnostics, reflection, batching. |
-| Editor commands | `Editor/Commands/*.cs` | Editor-only operations for assets, scenes, prefabs, importers, serialized data, tests, builds, validation. |
-| Editor startup | `Editor/McpEditorBootstrap.cs`, `Editor/McpServerWindow.cs` | Auto-start, menu items, server monitor window, Editor command registration. |
-| Helper modules | `Resources/YuzeToolkit/mcp/**/*.mjs` | Agent-facing JavaScript helper API layered over bridge commands. |
+| Server | `Runtime/Server/McpServer.cs`, `McpServerOptions.cs`, `McpSession*.cs` | `/mcp`, `/health`, JSON-RPC, session lifecycle, active session snapshots. |
+| Transport | `Runtime/Server/IMcpTransport.cs`, `TcpMcpTransport.cs`, `WebGlWebSocketMcpTransport.cs` | Platform-specific listener implementations normalized into server request/response objects. |
+| Eval | `Runtime/Eval/EvalJsCodeTool.cs`, `PuerTsEvalSession.cs`, `McpScriptLoader.cs`, `McpToolCatalog.cs` | MCP tool definition, busy-state guard, per-session PuerTS VM, virtual module loading, and dynamic tool catalog. |
+| Bridge | `Runtime/Bridge/*.cs` | `McpToolAttribute`, code-generation `IMcpTool` contract, tool registry, descriptors, and value formatting. |
+| Runtime tools | `Tools/Runtime/*.cs` | Runtime-safe Unity state, logs, GameObjects, Components, diagnostics, and reflection. This assembly registers its own tools. |
+| PuerTS bindings | `Editor/PuertsCfg.cs`, `Tools/Editor/PuertsToolsCfg.cs` | Editor-only PuerTS binding and typing configuration for core and tool types. |
+| Editor tools | `Tools/Editor/*.cs` | Editor-only operations for assets, scenes, prefabs, importers, serialized data, tests, builds, validation. This assembly registers its own tools. |
+| Editor startup | `Editor/McpEditorBootstrap.cs`, `Editor/McpServerWindow.cs` | Startup preference, menu items, server monitor window, and tool toggle UI. |
+| Tool modules | `tools/index`, `tools/<name>`, `Resources/tools/<name>` | Agent-facing helper API. Built-ins are generated from C# tools; extension JavaScript modules are loaded from Resources. |
 | Docs | `README*.md`, `docs/*.md` | Human quick start, MCP client configuration, helper catalog, design, advanced rules. |
 
 ## Request Flow
 
 1. Unity loads the package.
-2. In the Editor, `McpEditorBootstrap` registers runtime and Editor commands, then starts the server if auto-start is enabled.
-3. The MCP client sends `initialize` to `http://127.0.0.1:3100/mcp`.
-4. `McpServer` creates a session and returns the `Mcp-Session-Id` response header.
-5. The client calls `tools/list`; the server returns only `evalJsCode`.
-6. The client calls `tools/call` with `evalJsCode`.
-7. `EvalJsCodeTool` checks Unity busy state, creates or reuses the session PuerTS VM, and executes the submitted `execute()` function.
-8. JavaScript imports helper modules or calls `Mcp.invoke(...)` / `Mcp.invokeAsync(...)`.
-9. Bridge commands run on the Unity side and return JSON text.
-10. The eval result is serialized into MCP text/image content and returned to the client.
+2. Runtime and Editor tool assemblies register their own C# tools with `McpToolRegistry.Register<TTool>()` / `TryRegister<TTool>()`. The main runtime assembly does not reference built-in tool types, and the main Editor assembly only applies persisted tool states and starts the server when requested.
+3. `McpServer` selects transport by platform: non-WebGL builds use the `TcpListener` transport, and WebGL uses the WebSocket placeholder transport that returns a clear unsupported result.
+4. The MCP client sends `initialize` to `http://127.0.0.1:3100/mcp`. If Host is `0.0.0.0`, the client must use the Unity device's actual LAN IP.
+5. `McpServer` creates a session and returns the `Mcp-Session-Id` response header.
+6. The client calls `tools/list`; the server returns only `evalJsCode`.
+7. The client calls `tools/call` with `evalJsCode`.
+8. `EvalJsCodeTool` checks Unity busy state, creates or reuses the session PuerTS VM, and executes the submitted `execute()` function.
+9. JavaScript imports generated or resource-backed tool modules.
+10. Generated C# modules expose semantic functions plus `isEnabled()`. Semantic calls validate the tool is enabled, call public C# instance methods through PuerTS, and format return values into JSON-friendly data. If no helper covers the job, JavaScript may directly use PuerTS `CS.*` interop in the same VM.
+11. The eval result is serialized into MCP text/image content and returned to the client.
 
 ## Tool Surface
 
@@ -65,23 +68,32 @@ evalJsCode
 The real working surface is the helper module layer:
 
 ```text
-YuzeToolkit/mcp/index.mjs
-YuzeToolkit/mcp/Runtime/*.mjs
-YuzeToolkit/mcp/Editor/*.mjs
+tools/index
+tools/<name>
 ```
 
-Agents should start with `index.mjs`, read the target module's `description`, then call helper functions. Direct bridge calls are allowed, but helper modules are preferred because they hide command argument details and document safety requirements.
+Agents should start with `tools/index`, read the target module's `description`, then call helper functions for common workflows. The index combines registered C# tools and Unity `Resources/tools` JavaScript helpers, so tools from this package, the project, and other packages are discovered together. Generated C# modules use positional arguments, expose `functions[].description`, ordered `functions[].parameters`, legacy `functions[].parameterTypes`, expose `isEnabled()` for live state, validate enabled state on each call, and call public C# instance methods through PuerTS. Direct `CS.*` interop is also supported for one-off or project-specific logic; repeated logic should be promoted into a helper. After JavaScript returns, `EvalJsCodeTool` formats the final result into MCP content at the server boundary.
+
+## Result Handling
+
+Public C# tool methods should use explicit return types instead of hiding the shape behind `object`. Prefer primitives, `List<T>`, `IEnumerable<T>`, `Dictionary<string, TValue>`, or data composed from those types; `McpValueFormatter` serializes these values to JSON text content, making them the most stable and recommended result shape for clients and agents.
+
+Returning `UnityEngine.Object` is supported, but should not be the main DTO shape. The server summarizes it into a compact object: common Unity objects include `name`, `type`, and `instanceId`; asset objects also include asset path and guid; `GameObject` includes hierarchy path, scene, transform, and components; `Component` includes the component summary and its owning GameObject summary.
+
+Custom C# objects are a fallback path. The server returns `type`, `string`, and public instance members. Fields and properties are recursively converted within the depth limit; cycles are marked, and unreadable members are marked as unreadable. For a stable protocol, return explicit DTO dictionaries or lists instead of relying on reflection over custom objects.
+
+`LitJson` only owns JSON parse/stringify. Dictionary/list construction and parameter reads live in `McpData`, while final MCP output formatting lives in `McpValueFormatter`.
 
 ## Extension Points
 
 | Need | Recommended extension |
 |---|---|
-| Compose existing commands in a cleaner way | Add a JavaScript helper in `Resources/YuzeToolkit/mcp/Runtime` or `Resources/YuzeToolkit/mcp/Editor`. |
-| Expose a new Unity operation | Add an `IMcpCommand` implementation in `Runtime/Commands` or `Editor/Commands`. |
-| Register runtime-safe command | Register it in `McpCommandRegistry.EnsureDefaultCommands()`. |
-| Register Editor-only command | Register it from `McpEditorBootstrap.RegisterEditorCommands()`. |
-| Add project-specific static API access | Prefer `Runtime/reflection.mjs` first; add a command only when reflection is not enough. |
-| Add docs for a new helper or command | Update `HELPER_MODULES.md` and `ADVANCED_USAGE.md` when safety or lifecycle rules matter. |
+| Compose existing tools in JavaScript | Add a `.mjs` or `.js` runtime-safe helper in `Resources/tools`, or an Editor-only helper in `Editor/Resources/tools`; export `description` for index discovery. |
+| Expose a new Unity operation from C# | Add a class in `Tools/Runtime` or `Tools/Editor`, expose public instance methods, and annotate exported methods with `[McpFunction("...")]`. Ordinary classes must use `[McpTool("name", "description")]`; generated classes can implement `IMcpTool` instead, in which case `Name`, `Description`, and `Functions` provide all registry metadata and `Functions` must be non-null. |
+| Register runtime-safe C# tool | Register it from the runtime tool assembly bootstrap with `McpToolRegistry.TryRegister<TTool>()`; `TTool` must be `class, new()`. |
+| Register Editor-only C# tool | Register it from the Editor tool assembly bootstrap with `McpToolRegistry.TryRegister<TTool>()`; Editor availability comes from the Editor-only assembly, not a tool property. |
+| Add project-specific static API access | Prefer `tools/reflection` first; add a command only when reflection is not enough. |
+| Add docs for a new helper or tool | Update `HELPER_MODULES.md` and `ADVANCED_USAGE.md` when safety or lifecycle rules matter. |
 
 Keep extension names explicit and stable. If an operation can delete, move, overwrite, build, install packages, invoke non-public code, or change project state broadly, require an explicit confirmation argument.
 
@@ -90,9 +102,10 @@ Keep extension names explicit and stable. If an operation can delete, move, over
 | Rule | Why it matters |
 |---|---|
 | Do not trigger compilation or AssetDatabase refresh and then wait in the same eval call. | Domain Reload can destroy the VM/session. |
+| Eval execution is globally serialized. | Unity API and PuerTS ticks are main-thread-sensitive; multiple sessions keep separate VMs but eval calls are processed one at a time. |
 | Retry after busy-state errors. | The server rejects eval while Unity is compiling, updating assets, or switching play mode. |
-| Return plain serializable values. | Raw `UnityEngine.Object` graphs do not serialize usefully. |
-| Keep file IO inside the Unity project root. | Bridge commands are intended for project-local automation. |
+| Prefer data composed from primitives, lists, and dictionaries. | This is the stable protocol shape that the server can deterministically serialize as JSON. |
+| Keep file IO inside the Unity project root. | MCP tool calls are intended for project-local automation. |
 | Use `confirm: true` for destructive operations. | It makes accidental delete/move/build/package operations harder. |
 | Use `confirmDangerous: true` for non-public reflection or dangerous access. | It separates ordinary inspection from high-risk operations. |
 
@@ -109,5 +122,8 @@ Keep extension names explicit and stable. If an operation can delete, move, over
 - The single-tool model is flexible but less immediately discoverable than plugins that expose many named tools.
 - Agents need to write valid JavaScript. Weak JavaScript generation can fail even when the Unity-side API is correct.
 - Direct JavaScript runs in PuerTS, not Node.js — Node-style modules (`fs`, `path`, etc.) are not available.
+- Runtime/Player tool enabled states are currently in-memory unless a host project applies its own startup configuration; Editor toggles are persisted through EditorPrefs.
 - Runtime-safe commands work in Runtime/Player; Editor helper modules require the Unity Editor.
+- WebGL cannot listen for inbound TCP/HTTP connections; the WebSocket transport currently compiles and fails clearly instead of running a real relay-backed connection.
+- `0.0.0.0` exposes the server to the LAN, and the server currently has no authentication; use it only on controlled networks.
 - A blocked Unity main thread cannot always be interrupted safely by the eval timeout.

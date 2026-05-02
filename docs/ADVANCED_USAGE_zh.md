@@ -2,83 +2,64 @@
 
 [README](../README_zh.md) | [English](ADVANCED_USAGE.md) | [Helper 参考](HELPER_MODULES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md)
 
-[![Bridge](https://img.shields.io/badge/Bridge-Commands-9b59b6)](#bridge-commands)
+[![Tools](https://img.shields.io/badge/Tools-Generated-9b59b6)](#tool-invokes)
 [![PuerTS](https://img.shields.io/badge/PuerTS-C%23%20Interop-00a8ff)](#puerts-c-interop)
 [![Safety](https://img.shields.io/badge/Safety-confirm%20required-e67e22)](#安全确认参数)
 
-本文面向 Agent 和维护者，说明底层 bridge command、直接 PuerTS C# interop、安全确认参数、Domain Reload 规则和排错。
+本文面向 Agent 和维护者，说明生成的 `tools/<name>` 模块、PuerTS C# interop、安全确认参数、Domain Reload 规则和排错。
 
-## Bridge Commands
+## Tool Invokes
 
-helper module 是推荐 API。只有 helper 没覆盖需求，或需要调试 helper 层时，才直接调用 bridge command。
+生成的 `tools/<name>` 模块是常见流程的推荐 API。C# tool module 导出语义 JavaScript 函数，每次调用都会确认 tool 仍处于启用状态，再通过 PuerTS 调用 C# public 实例方法，并把返回值格式化成 MCP 输出。调用使用位置参数；`module.functions[]` 暴露 `description`、有序的 `parameters` 和兼容旧字段的 `parameterTypes`。需要读取实时启用状态时使用 `module.isEnabled()`。
 
-响应格式：
-
-```json
-{ "success": true, "result": {} }
-```
-
-或：
-
-```json
-{ "success": false, "error": "message" }
-```
-
-直接调用：
+直接 module 调用：
 
 ```javascript
 async function execute() {
-  return await Mcp.invokeAsync("asset.execute", {
-    action: "find",
-    filter: "t:Prefab",
-    folders: ["Assets"],
-    limit: 20
-  });
+  const assets = await import('tools/assets');
+  return assets.find('t:Prefab', 20, ['Assets']);
 }
 ```
 
-## Runtime Commands
+## Runtime Tools
 
-| Command | Actions |
+| Tool | Actions |
 |---|---|
-| `runtime.getState` | 不需要 action 参数。 |
-| `log.execute` | `getRecent`, `clear` |
-| `object.execute` | `find`, `get`, `create`, `destroy`, `duplicate`, `setParent`, `setTransform`, `setActive`, `setNameLayerTag` |
-| `component.execute` | `list`, `get`, `add`, `remove`, `setProperty`, `setProperties`, `callMethod`, `listTypes` |
-| `runtime.diagnostics` | `cameraList`, `physicsState`, `graphicsState`, `uiList`, `textureList` |
-| `reflection.execute` | `getNamespaces`, `getTypes`, `getTypeDetails`, `findMethods`, `callStaticMethod` |
-| `batch.execute` | 参数为 `{ commands, stopOnError? }`。 |
+| `runtime` | `getState`, `getRecentLogs`, `clearLogs` |
+| `objects` | `find`, `get`, `create`, `destroy`, `duplicate`, `setParent`, `setTransform`, `setActive`, `setNameLayerTag` |
+| `components` | `list`, `get`, `add`, `remove`, `setProperty`, `setProperties`, `callMethod`, `listTypes` |
+| `diagnostics` | `listCameras`, `getPhysicsState`, `getGraphicsState`, `listCanvases`, `listLoadedTextures` |
+| `reflection` | `getNamespaces`, `getTypes`, `getTypeDetails`, `findMethods`, `callStaticMethod` |
+| `inspect` | `describe`, `format`, `toName`, `toPath`, `toJson`, `toYaml` |
 
-## Editor Commands
+## Editor Tools
 
-| Command | Actions |
+| Tool | Actions |
 |---|---|
-| `editor.execute` | `getState`, `getCompilationState`, `requestScriptCompilation`, `scheduleAssetRefresh`, `getCompilerMessages`, `setPlayMode`, `setPause`, `executeMenuItem`, `selectionGet`, `selectionSet`, `screenshotGameView` |
-| `asset.execute` | `find`, `getInfo`, `readText`, `writeText`, `createFolder`, `move`, `copy`, `delete`, `refreshNow`, `getDependencies`, `findReferences`, `scriptCreate`, `scriptApplyTextEdits`, `materialCreate` |
-| `importer.execute` | `get`, `setProperty`, `setMany`, `reimport` |
-| `scene.execute` | `listOpen`, `getHierarchy`, `open`, `create`, `save`, `saveAs`, `setActive` |
-| `prefab.execute` | `instantiate`, `createFromObject`, `createVariant`, `openStage`, `closeStage`, `saveStage`, `getOverrides`, `applyOverrides`, `revertOverrides`, `unpack` |
-| `serialized.execute` | `get`, `set`, `setMany`, `resizeArray`, `insertArrayElement`, `deleteArrayElement` |
-| `project.execute` | `getSettings`, `profilerState`, `toolState` |
-| `pipeline.execute` | `listPackages`, `addPackage`, `removePackage`, `searchPackages`, `getPackageRequest`, `runTests`, `getTestRun`, `getBuildSettings`, `buildPlayer`, `getBuild` |
-| `validation.execute` | `run`, `missingScripts`, `missingReferences`, `serializedFieldTooltips` |
+| `editor` | `getState`, `getCompilationState`, `requestScriptCompilation`, `scheduleAssetRefresh`, `getCompilerMessages`, `setPlayMode`, `setPause`, `executeMenuItem`, `getSelection`, `setSelection`, `screenshotGameView` |
+| `assets` | `find`, `findPaths`, `findNames`, `getInfo`, `readText`, `writeText`, `createFolder`, `move`, `copy`, `deleteAsset`, `refreshNow`, `getDependencies`, `findReferences`, `createScript`, `applyScriptTextEdits`, `createMaterial` |
+| `importers` | `get`, `setProperty`, `setMany`, `reimport` |
+| `scenes` | `listOpenScenes`, `getSceneHierarchy`, `openScene`, `createScene`, `saveScene`, `saveSceneAs`, `setActiveScene` |
+| `prefabs` | `instantiate`, `createFromObject`, `createVariant`, `openStage`, `closeStage`, `saveStage`, `getOverrides`, `applyOverrides`, `revertOverrides`, `unpack` |
+| `serialized` | `get`, `set`, `setMany`, `resizeArray`, `insertArrayElement`, `deleteArrayElement` |
+| `project` | `getProjectSettings`, `getProfilerState`, `getToolState` |
+| `pipeline` | `listPackages`, `addPackage`, `removePackage`, `searchPackages`, `getPackageRequest`, `runTests`, `getTestRun`, `getBuildSettings`, `buildPlayer`, `getBuild` |
+| `validation` | `run`, `missingScripts`, `missingReferences`, `serializedFieldTooltips` |
 
-Editor command 需要 Unity Editor。Runtime/Player 中调用会返回 Editor-only 错误。
+Editor tool 需要 Unity Editor。Runtime/Player 中调用会返回 Editor-only 错误。
 
-## Batch Commands
+## Sequential Commands
 
-短 command 序列可以用 `Runtime/runtime.mjs#executeBatch()` 或直接调用 `batch.execute`。
+短命令序列直接写在 JavaScript 里顺序调用，不再通过 bridge-level batch 包一层。
 
 ```javascript
 async function execute() {
-  const runtime = await import('YuzeToolkit/mcp/Runtime/runtime.mjs');
-  return await runtime.executeBatch({
-    stopOnError: true,
-    commands: [
-      { name: "object.execute", args: { action: "find", by: "name", value: "Player", limit: 5 } },
-      { name: "runtime.diagnostics", args: { action: "graphicsState" } }
-    ]
-  });
+  const objects = await import('tools/objects');
+  const diagnostics = await import('tools/diagnostics');
+  return {
+    players: objects.find('Player', 'name', true, 5),
+    graphics: diagnostics.getGraphicsState()
+  };
 }
 ```
 
@@ -87,6 +68,8 @@ async function execute() {
 ## PuerTS C# Interop
 
 直接 JavaScript 运行在 PuerTS 中，不是 Node.js。
+
+直接 PuerTS interop 也是一等能力。一次性调试或不值得沉淀成 helper 的项目 API，可以直接通过 `CS.*` 调用 Unity/C#。
 
 Runtime API 示例：
 
@@ -110,20 +93,31 @@ async function execute() {
 - `CS.UnityEditor.*` 只能在 Unity Editor 中使用。
 - Unity 需要 `System.Type` 时，用 `puer.$typeof(...)` 或 `puerts.$typeof(...)`。
 - 不要假设 Node.js 模块可用，例如 `fs`。
-- 返回 JSON-friendly 摘要，不要返回原始 `UnityEngine.Object` 大对象图。
+- 返回基础类型、List、Dictionary 组成的数据，这是服务端最稳定的 JSON 输出路径。
+- 可以返回 `UnityEngine.Object` 或 C# 自定义对象，但服务端会把它们转成摘要，不能依赖完整对象图。
+
+## 返回值规则
+
+`evalJsCode` 的 JavaScript 返回值不会在 JS runner 里提前转成字符串。结果回到 C# 后，MCP 服务端统一处理：
+
+| 返回类型 | 服务端处理 |
+|---|---|
+| `string`、number、bool、null | 作为 JSON 值写入 MCP text content。 |
+| `List<T>`、array、`IEnumerable<T>` | 递归转换元素，然后作为 JSON array 返回。 |
+| `Dictionary<string, TValue>` 或字典形数据 | 递归转换 value，然后作为 JSON object 返回。 |
+| `UnityEngine.Object` | 返回 `name`、`type`、`instanceId` 等摘要；资源补 asset path/guid；GameObject/Component 补层级和组件关系。 |
+| C# 自定义类型 | 返回 `type`、`string`、public instance members；member 会递归转换到深度限制内。 |
+
+最推荐的工具返回值是基础类型、List 和 Dictionary 组成的显式 DTO。它们一定能被服务端正确 JSON 化，也最容易让 MCP 客户端和 AI 稳定读取。
 
 ## 项目自定义 C# API
 
-项目 static method 可用 `Runtime/reflection.mjs`：
+项目 static method 可用 `tools/reflection`：
 
 ```javascript
 async function execute() {
-  const reflection = await import('YuzeToolkit/mcp/Runtime/reflection.mjs');
-  return await reflection.callStaticMethod({
-    type: "MyGame.EditorTools.AssetReport",
-    method: "CreateReport",
-    args: ["Assets"]
-  });
+  const reflection = await import('tools/reflection');
+  return reflection.callStaticMethod("MyGame.EditorTools.AssetReport", "CreateReport", ["Assets"]);
 }
 ```
 
@@ -176,7 +170,7 @@ Unity 在编译脚本、刷新资源或切换 play mode 时会短暂不可用。
 
 ## 路径规则
 
-bridge command 做项目文件 IO 时，路径会解析到 Unity 项目根目录内。
+执行项目文件 IO 的 tool call 会把路径解析到 Unity 项目根目录内。
 
 | 正确 | 错误 |
 |---|---|
@@ -193,6 +187,6 @@ bridge command 做项目文件 IO 时，路径会解析到 Unity 项目根目录
 | `Unity Editor is updating assets` | 等待 AssetDatabase refresh。 |
 | `Unity Editor is changing play mode` | 等待 play mode 切换结束。 |
 | `Command '...' is Editor-only` | 使用 Unity Editor，或改用 Runtime helper。 |
-| `Unknown command` | 调用 `runtime.getState()`，检查 `registeredCommands`。 |
+| `Unknown or disabled MCP tool` | 调用 `runtime.getState()`，检查 `registeredTools`；如果工具存在，再检查 Server Window 里的工具开关。 |
 | `Unknown action` | 检查相关 helper description 或 command 表。 |
 | Unity 卡死 | 避免 `execute()` 中同步死循环；timeout 不能可靠中断阻塞主线程。 |

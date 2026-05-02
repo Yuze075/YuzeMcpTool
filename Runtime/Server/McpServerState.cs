@@ -22,6 +22,6 @@ namespace YuzeToolkit
 
         public string Status => IsRunning ? "running" : "stopped";
 
-        public string Environment => CommandUtilities.GetEnvironmentName();
+        public string Environment => ToolUtilities.GetEnvironmentName();
     }
 }

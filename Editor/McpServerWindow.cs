@@ -1,5 +1,7 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,25 +12,44 @@ namespace YuzeToolkit
     {
         private const int RefreshIntervalMilliseconds = 500;
         private const int LabelWidth = 150;
+        private const string ToolExpandedPrefPrefix = nameof(YuzeToolkit) + ".McpServerWindow.ToolExpanded.";
         private static readonly Color RunningColor = new(0.2f, 0.65f, 0.32f);
         private static readonly Color StoppedColor = new(0.78f, 0.25f, 0.2f);
         private static readonly Color WarningColor = new(0.85f, 0.58f, 0.18f);
         private static readonly Color ErrorColor = new(0.78f, 0.22f, 0.18f);
         private static readonly Color CardBorderColor = new(0.24f, 0.24f, 0.24f);
         private static readonly Color CardBackgroundColor = new(0.16f, 0.16f, 0.16f, 0.28f);
+        private static readonly Color ActiveTabColor = new(0.12f, 0.36f, 0.82f, 1f);
+        private static readonly Color InactiveTabColor = new(0.12f, 0.12f, 0.12f, 0.3f);
+        private static readonly Color EnabledButtonColor = new(0.12f, 0.36f, 0.82f, 1f);
+        private static readonly Color DisabledButtonColor = new(0.36f, 0.36f, 0.36f, 0.95f);
 
         private Button _startButton = null!;
         private Button _stopButton = null!;
         private Button _copyEndpointButton = null!;
+        private Button _serverTabButton = null!;
+        private Button _toolsTabButton = null!;
+        private Button _conversationsTabButton = null!;
         private Label _statusValue = null!;
         private Label _environmentValue = null!;
         private Label _endpointValue = null!;
         private Label _activeConversationsValue = null!;
         private Label _startedValue = null!;
         private Label _uptimeValue = null!;
+        private VisualElement _serverRoot = null!;
         private VisualElement _serverMessages = null!;
         private VisualElement _sessionsRoot = null!;
+        private VisualElement _toolsRoot = null!;
         private string _currentEndpoint = string.Empty;
+        private WindowTab _activeTab = WindowTab.Server;
+        private readonly HashSet<string> _expandedTools = new(StringComparer.Ordinal);
+
+        private enum WindowTab
+        {
+            Server,
+            Tools,
+            Conversations
+        }
 
         [MenuItem(nameof(YuzeToolkit) + "/MCP/Server Window")]
         public static void Open()
@@ -45,6 +66,7 @@ namespace YuzeToolkit
             root.style.flexDirection = FlexDirection.Column;
 
             root.Add(BuildToolbar());
+            root.Add(BuildTabBar());
 
             var scrollView = new ScrollView
             {
@@ -57,9 +79,24 @@ namespace YuzeToolkit
             scrollView.style.paddingBottom = 8;
             root.Add(scrollView);
 
-            scrollView.Add(CreateSectionTitle("Server"));
+            _serverRoot = new VisualElement();
+            _toolsRoot = new VisualElement();
+            _sessionsRoot = new VisualElement();
+            scrollView.Add(_serverRoot);
+            scrollView.Add(_toolsRoot);
+            scrollView.Add(_sessionsRoot);
+
+            BuildServerTab(_serverRoot);
+            SetActiveTab(_activeTab);
+
+            RefreshView();
+            root.schedule.Execute(RefreshView).Every(RefreshIntervalMilliseconds);
+        }
+
+        private void BuildServerTab(VisualElement parent)
+        {
             var serverCard = CreateCard();
-            scrollView.Add(serverCard);
+            parent.Add(serverCard);
 
             _statusValue = AddField(serverCard, "Status");
             _environmentValue = AddField(serverCard, "Environment");
@@ -80,13 +117,6 @@ namespace YuzeToolkit
             _serverMessages = new VisualElement();
             _serverMessages.style.marginTop = 6;
             serverCard.Add(_serverMessages);
-
-            scrollView.Add(CreateSectionTitle("Conversations"));
-            _sessionsRoot = new VisualElement();
-            scrollView.Add(_sessionsRoot);
-
-            RefreshView();
-            root.schedule.Execute(RefreshView).Every(RefreshIntervalMilliseconds);
         }
 
         private VisualElement BuildToolbar()
@@ -120,17 +150,75 @@ namespace YuzeToolkit
             toolbar.Add(_stopButton);
 
             toolbar.Add(CreateToolbarButton("Refresh", "Refresh the displayed MCP state.", RefreshView));
+            toolbar.Add(CreateToolbarButton("Reload Tools", "Refresh JavaScript MCP tools from Resources/tools.", RefreshTools, 100));
             return toolbar;
         }
 
-        private static Button CreateToolbarButton(string text, string tooltip, Action clicked)
+        private VisualElement BuildTabBar()
+        {
+            var tabBar = new VisualElement();
+            tabBar.style.flexDirection = FlexDirection.Row;
+            tabBar.style.paddingLeft = 8;
+            tabBar.style.paddingRight = 8;
+            tabBar.style.paddingTop = 6;
+            tabBar.style.paddingBottom = 6;
+            tabBar.style.borderBottomWidth = 1;
+            tabBar.style.borderBottomColor = CardBorderColor;
+
+            _serverTabButton = CreateTabButton("Server", WindowTab.Server);
+            _toolsTabButton = CreateTabButton("Tools", WindowTab.Tools);
+            _conversationsTabButton = CreateTabButton("Conversations", WindowTab.Conversations);
+            tabBar.Add(_serverTabButton);
+            tabBar.Add(_toolsTabButton);
+            tabBar.Add(_conversationsTabButton);
+            return tabBar;
+        }
+
+        private Button CreateTabButton(string text, WindowTab tab)
+        {
+            var button = new Button(() => SetActiveTab(tab))
+            {
+                text = text,
+                tooltip = $"Show {text} information.",
+            };
+            button.style.width = tab == WindowTab.Conversations ? 140 : 100;
+            button.style.height = 26;
+            button.style.marginRight = 4;
+            return button;
+        }
+
+        private void SetActiveTab(WindowTab tab)
+        {
+            _activeTab = tab;
+
+            if (_serverRoot != null)
+                _serverRoot.style.display = tab == WindowTab.Server ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_toolsRoot != null)
+                _toolsRoot.style.display = tab == WindowTab.Tools ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_sessionsRoot != null)
+                _sessionsRoot.style.display = tab == WindowTab.Conversations ? DisplayStyle.Flex : DisplayStyle.None;
+
+            SetTabButtonState(_serverTabButton, tab == WindowTab.Server);
+            SetTabButtonState(_toolsTabButton, tab == WindowTab.Tools);
+            SetTabButtonState(_conversationsTabButton, tab == WindowTab.Conversations);
+        }
+
+        private static void SetTabButtonState(Button button, bool active)
+        {
+            if (button == null) return;
+            button.style.backgroundColor = active ? ActiveTabColor : InactiveTabColor;
+            button.style.color = active ? Color.white : new Color(0.82f, 0.82f, 0.82f, 1f);
+            button.style.unityFontStyleAndWeight = active ? FontStyle.Bold : FontStyle.Normal;
+        }
+
+        private static Button CreateToolbarButton(string text, string tooltip, Action clicked, int width = 76)
         {
             var button = new Button(clicked)
             {
                 text = text,
                 tooltip = tooltip,
             };
-            button.style.width = 76;
+            button.style.width = width;
             button.style.marginLeft = 4;
             return button;
         }
@@ -158,7 +246,220 @@ namespace YuzeToolkit
             if (!string.IsNullOrWhiteSpace(state.LastError))
                 _serverMessages.Add(CreateMessage(state.LastError, ErrorColor));
 
+            RefreshToolsView();
             RefreshSessions(state);
+        }
+
+        private void RefreshTools()
+        {
+            _ = McpToolCatalog.GetIndex(true);
+            McpToolEditorSettings.ApplyPersistedStates();
+            RefreshView();
+        }
+
+        private void RefreshToolsView()
+        {
+            _toolsRoot.Clear();
+            var tools = McpToolCatalog.ListTools(false).OrderBy(tool => tool.Name, StringComparer.Ordinal).ToList();
+            if (tools.Count == 0)
+            {
+                _toolsRoot.Add(CreateMessage("No MCP tools are registered.", WarningColor));
+                return;
+            }
+
+            var csharpTools = tools
+                .Where(tool => string.Equals(tool.Source, "csharp", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(tool => tool.EditorOnly ? 0 : 1)
+                .ThenBy(tool => tool.Name, StringComparer.Ordinal)
+                .ToList();
+            var jsTools = tools
+                .Where(tool => string.Equals(tool.Source, "js", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(tool => tool.EditorOnly ? 0 : 1)
+                .ThenBy(tool => tool.Name, StringComparer.Ordinal)
+                .ToList();
+
+            _toolsRoot.Add(CreateToolSection("C# Tools", csharpTools, "No C# MCP tools are registered."));
+            _toolsRoot.Add(CreateToolSection("JS Tools", jsTools, "No JavaScript MCP tools found in Resources/tools."));
+        }
+
+        private VisualElement CreateToolSection(
+            string title,
+            IReadOnlyList<McpToolDescriptor> tools,
+            string emptyMessage)
+        {
+            var section = CreateCard();
+
+            var header = new Label($"{title} ({tools.Count})");
+            header.style.unityFontStyleAndWeight = FontStyle.Bold;
+            header.style.marginBottom = 6;
+            section.Add(header);
+
+            if (tools.Count == 0)
+            {
+                section.Add(CreateMessage(emptyMessage, WarningColor));
+                return section;
+            }
+
+            foreach (var tool in tools)
+                section.Add(CreateToolItem(tool));
+
+            return section;
+        }
+
+        private VisualElement CreateToolItem(McpToolDescriptor tool)
+        {
+            var expanded = IsToolExpanded(tool.Name);
+
+            var item = new VisualElement();
+            item.style.marginBottom = 6;
+            item.style.paddingLeft = 4;
+            item.style.paddingRight = 4;
+            item.style.paddingTop = 4;
+            item.style.paddingBottom = 4;
+            item.style.borderBottomWidth = 1;
+            item.style.borderBottomColor = CardBorderColor;
+
+            var header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.minHeight = 28;
+            item.Add(header);
+
+            var nameButton = new Button(() =>
+            {
+                SetToolExpanded(tool.Name, !IsToolExpanded(tool.Name));
+                RefreshToolsView();
+            })
+            {
+                text = expanded ? "▼ " + tool.Name : "▶ " + tool.Name,
+                tooltip = "Open or close tool details.",
+            };
+            nameButton.style.width = 150;
+            nameButton.style.marginLeft = 4;
+            nameButton.style.unityTextAlign = TextAnchor.MiddleLeft;
+            header.Add(nameButton);
+
+            var source = new Label(tool.Source + (tool.EditorOnly ? " / Editor" : string.Empty));
+            source.style.width = 120;
+            source.style.opacity = 0.72f;
+            source.style.marginLeft = 4;
+            header.Add(source);
+
+            var description = new Label(tool.Description);
+            description.style.flexGrow = 1;
+            description.style.whiteSpace = WhiteSpace.Normal;
+            description.style.marginLeft = 6;
+            header.Add(description);
+
+            var stateButton = CreateToolStateButton(tool);
+            stateButton.style.marginLeft = 8;
+            header.Add(stateButton);
+
+            var detail = new VisualElement();
+            detail.style.display = expanded ? DisplayStyle.Flex : DisplayStyle.None;
+            detail.style.marginTop = 6;
+            detail.style.paddingLeft = 12;
+            item.Add(detail);
+
+            AddField(detail, "Name").text = tool.Name;
+            AddField(detail, "Import Path").text = $"tools/{tool.Name}";
+            AddField(detail, "Source").text = tool.Source;
+            AddField(detail, "Editor Only").text = tool.EditorOnly ? "yes" : "no";
+            AddTextBlock(detail, "Description", tool.Description);
+            AddToolFunctions(detail, tool);
+
+            return item;
+        }
+
+        private Button CreateToolStateButton(McpToolDescriptor tool)
+        {
+            var button = new Button(() =>
+            {
+                McpToolEditorSettings.SetEnabled(tool.Name, !tool.Enabled);
+                RefreshToolsView();
+            })
+            {
+                tooltip = "Enable or disable importing and invoking this MCP sub-tool.",
+            };
+            button.style.width = 96;
+            button.style.height = 24;
+            SetToolStateButtonStyle(button, tool.Enabled);
+            return button;
+        }
+
+        private bool IsToolExpanded(string toolName)
+        {
+            if (_expandedTools.Contains(toolName)) return true;
+            if (!EditorPrefs.GetBool(ToolExpandedPrefPrefix + toolName, false)) return false;
+            _expandedTools.Add(toolName);
+            return true;
+        }
+
+        private void SetToolExpanded(string toolName, bool expanded)
+        {
+            if (expanded)
+                _expandedTools.Add(toolName);
+            else
+                _expandedTools.Remove(toolName);
+            EditorPrefs.SetBool(ToolExpandedPrefPrefix + toolName, expanded);
+        }
+
+        private static void SetToolStateButtonStyle(Button button, bool enabled)
+        {
+            button.text = enabled ? "Enabled" : "Disabled";
+            button.style.backgroundColor = enabled ? EnabledButtonColor : DisabledButtonColor;
+            button.style.color = Color.white;
+            button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        }
+
+        private static void AddToolFunctions(VisualElement parent, McpToolDescriptor tool)
+        {
+            var title = new Label("Functions");
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.marginTop = 6;
+            title.style.marginBottom = 3;
+            parent.Add(title);
+
+            if (tool.Functions.Count == 0)
+            {
+                var message = tool.Source.Equals("js", StringComparison.OrdinalIgnoreCase)
+                    ? "JavaScript tools are loaded as source files; generated function metadata is not available."
+                    : "No function metadata is defined.";
+                parent.Add(CreateMessage(message, WarningColor));
+                return;
+            }
+
+            foreach (var function in tool.Functions)
+                parent.Add(CreateFunctionRow(function));
+        }
+
+        private static VisualElement CreateFunctionRow(McpToolFunctionDescriptor function)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.FlexStart;
+            row.style.paddingLeft = 6;
+            row.style.paddingRight = 6;
+            row.style.paddingTop = 3;
+            row.style.paddingBottom = 3;
+            row.style.borderBottomWidth = 1;
+            row.style.borderBottomColor = CardBorderColor;
+
+            var name = new Label(function.MethodName);
+            name.style.width = 150;
+            name.style.unityFontStyleAndWeight = FontStyle.Bold;
+            row.Add(name);
+
+            var parameters = new Label(function.ParameterTypes.Count == 0 ? "()" : $"({string.Join(", ", function.ParameterTypes)})");
+            parameters.style.width = 220;
+            parameters.style.opacity = 0.72f;
+            row.Add(parameters);
+
+            var description = new Label(function.Description);
+            description.style.flexGrow = 1;
+            description.style.whiteSpace = WhiteSpace.Normal;
+            row.Add(description);
+            return row;
         }
 
         private void RefreshSessions(McpServerState state)
@@ -214,14 +515,14 @@ namespace YuzeToolkit
                     card.Add(CreateMessage(session.LastEvalError, ErrorColor));
             }
 
-            AddField(card, "Command Count").text = $"{session.TotalCommandCount} total / {session.FailedCommandCount} failed";
-            if (session.ActiveCommandCount > 0)
-                AddField(card, "Current Command").text = $"{session.CurrentCommandName} ({session.ActiveCommandCount} active, {FormatMilliseconds(session.CurrentCommandElapsedMs)})";
-            else if (session.HasLastCommand)
-                AddField(card, "Last Command").text = $"{session.LastCommandName} {(session.LastCommandSucceeded ? "succeeded" : "failed")} in {FormatMilliseconds(session.LastCommandDurationMs)}";
+            AddField(card, "Tool Function Count").text = $"{session.TotalToolFunctionCount} total / {session.FailedToolFunctionCount} failed";
+            if (session.ActiveToolFunctionCount > 0)
+                AddField(card, "Current Tool Function").text = $"{session.CurrentToolFunctionName} ({session.ActiveToolFunctionCount} active, {FormatMilliseconds(session.CurrentToolFunctionElapsedMs)})";
+            else if (session.HasLastToolFunction)
+                AddField(card, "Last Tool Function").text = $"{session.LastToolFunctionName} {(session.LastToolFunctionSucceeded ? "succeeded" : "failed")} in {FormatMilliseconds(session.LastToolFunctionDurationMs)}";
 
-            if (!string.IsNullOrWhiteSpace(session.LastCommandError))
-                card.Add(CreateMessage(session.LastCommandError, WarningColor));
+            if (!string.IsNullOrWhiteSpace(session.LastToolFunctionError))
+                card.Add(CreateMessage(session.LastToolFunctionError, WarningColor));
 
             return card;
         }
@@ -244,15 +545,6 @@ namespace YuzeToolkit
             card.style.borderRightColor = CardBorderColor;
             card.style.backgroundColor = CardBackgroundColor;
             return card;
-        }
-
-        private static Label CreateSectionTitle(string text)
-        {
-            var label = new Label(text);
-            label.style.unityFontStyleAndWeight = FontStyle.Bold;
-            label.style.marginTop = 4;
-            label.style.marginBottom = 4;
-            return label;
         }
 
         private static Label AddField(VisualElement parent, string labelText)
@@ -331,8 +623,8 @@ namespace YuzeToolkit
                 return "no eval yet";
             if (session.LastEvalStatus == McpLogicExecutionStatus.Failed)
                 return "failed";
-            if (session.HasLastCommand && !session.LastCommandSucceeded)
-                return "eval succeeded, last command failed";
+            if (session.HasLastToolFunction && !session.LastToolFunctionSucceeded)
+                return "eval succeeded, last tool function failed";
             return "succeeded";
         }
 

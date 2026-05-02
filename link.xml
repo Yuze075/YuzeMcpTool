@@ -1,0 +1,14 @@
+<linker>
+  <assembly fullname="YuzeMcpTool">
+    <type fullname="YuzeToolkit.McpToolRegistry" preserve="all" />
+    <type fullname="YuzeToolkit.McpValueFormatter" preserve="all" />
+  </assembly>
+  <assembly fullname="YuzeMcpTool.Tools">
+    <type fullname="YuzeToolkit.RuntimeTool" preserve="all" />
+    <type fullname="YuzeToolkit.ObjectsTool" preserve="all" />
+    <type fullname="YuzeToolkit.ComponentsTool" preserve="all" />
+    <type fullname="YuzeToolkit.DiagnosticsTool" preserve="all" />
+    <type fullname="YuzeToolkit.InspectTool" preserve="all" />
+    <type fullname="YuzeToolkit.ReflectionTool" preserve="all" />
+  </assembly>
+</linker>

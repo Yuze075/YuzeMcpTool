@@ -19,9 +19,9 @@ namespace YuzeToolkit
             Dictionary<string, object?> arguments,
             CancellationToken cancellationToken)
         {
-            var code = LitJson.GetString(arguments, "code") ?? string.Empty;
-            var timeout = LitJson.GetInt(arguments, "timeout", _options.DefaultEvalTimeoutSeconds);
-            var resetSession = LitJson.GetBool(arguments, "resetSession", false);
+            var code = McpData.GetString(arguments, "code") ?? string.Empty;
+            var timeout = McpData.GetInt(arguments, "timeout", _options.DefaultEvalTimeoutSeconds);
+            var resetSession = McpData.GetBool(arguments, "resetSession", false);
             var evalStarted = false;
             var evalCompleted = false;
 
@@ -50,26 +50,24 @@ namespace YuzeToolkit
                     return ToolError(message);
                 }
 
-                if (resetSession)
-                {
-                    session.EvalSession?.Dispose();
-                    session.EvalSession = null;
-                }
-
-                session.EvalSession ??= new PuerTsEvalSession(session);
-
                 await GlobalEvalLock.WaitAsync(cancellationToken);
                 try
                 {
+                    if (resetSession && session.EvalSession != null)
+                    {
+                        var previousSession = session.EvalSession;
+                        await MainThreadDispatcher.RunAsync(previousSession.Dispose);
+                        session.EvalSession = null;
+                    }
+
+                    session.EvalSession ??= new PuerTsEvalSession(session);
+
                     BeginEval();
                     var result = await session.EvalSession.ExecuteAsync(requestId, code, timeout, cancellationToken);
                     if (result.TryGetValue("success", out var successValue) && successValue is bool success && success)
                     {
                         CompleteEval(true, string.Empty);
-                        if (result.TryGetValue("content", out var content) && content is List<object?> contentList)
-                            return LitJson.Obj(("content", contentList));
-
-                        return LitJson.Obj(("content", LitJson.Arr(LitJson.Obj(("type", "text"), ("text", "(no return value)")))));
+                        return McpData.Obj(("content", BuildContent(result)));
                     }
 
                     var error = result.TryGetValue("error", out var errorValue) ? Convert.ToString(errorValue) : "evalJsCode failed.";
@@ -98,36 +96,51 @@ namespace YuzeToolkit
 
         public static Dictionary<string, object?> ToolDefinition()
         {
-            return LitJson.Obj(
+            return McpData.Obj(
                 ("name", "evalJsCode"),
                 ("description", Description),
-                ("inputSchema", LitJson.Obj(
+                ("inputSchema", McpData.Obj(
                     ("type", "object"),
-                    ("properties", LitJson.Obj(
-                        ("code", LitJson.Obj(
+                    ("properties", McpData.Obj(
+                        ("code", McpData.Obj(
                             ("type", "string"),
-                            ("description", "An async function declaration named execute. Example: async function execute() { return await Mcp.invokeAsync('runtime.getState', {}); }")
+                            ("description", "An async function declaration named execute. Example: async function execute() { const runtime = await import('tools/runtime'); return runtime.getState(); }")
                         )),
-                        ("timeout", LitJson.Obj(
+                        ("timeout", McpData.Obj(
                             ("type", "number"),
                             ("description", "Execution timeout in seconds. Default is 30.")
                         )),
-                        ("resetSession", LitJson.Obj(
+                        ("resetSession", McpData.Obj(
                             ("type", "boolean"),
                             ("description", "Reset this MCP session's persistent JavaScript VM before executing.")
                         ))
                     )),
-                    ("required", LitJson.Arr("code"))
+                    ("required", McpData.Arr("code"))
                 ))
             );
         }
 
         private static Dictionary<string, object?> ToolError(string text)
         {
-            return LitJson.Obj(
-                ("content", LitJson.Arr(LitJson.Obj(("type", "text"), ("text", "Error: " + text)))),
+            return McpData.Obj(
+                ("content", McpData.Arr(McpData.Obj(("type", "text"), ("text", "Error: " + text)))),
                 ("isError", true)
             );
+        }
+
+        private static List<object?> BuildContent(Dictionary<string, object?> evalResult)
+        {
+            var content = new List<object?>();
+            var hasValue = evalResult.TryGetValue("hasValue", out var hasValueRaw) && hasValueRaw is bool valueExists && valueExists;
+            var text = hasValue && evalResult.TryGetValue("result", out var value)
+                ? McpValueFormatter.ToMcpText(value)
+                : "(no return value)";
+            content.Add(McpData.Obj(("type", "text"), ("text", text)));
+
+            if (McpData.AsArray(evalResult.TryGetValue("images", out var imagesRaw) ? imagesRaw : null) is { } images)
+                content.AddRange(images);
+
+            return content;
         }
 
         private static string? GetUnityBusyReason()
@@ -144,22 +157,16 @@ namespace YuzeToolkit
         }
 
         private const string Description =
-            "Execute JavaScript code inside Unity through a persistent PuerTS VM owned by the current MCP session. " +
-            "This MCP server intentionally exposes only one MCP tool: evalJsCode. Use it as the entry point for Unity operations. " +
-            "The submitted code must define `async function execute() { ... }`; return a concise serializable value from that function. " +
-            "The `execute` function is isolated per call, while the underlying VM persists for module cache and deliberate `globalThis` state. " +
-            "Start with `const index = await import('YuzeToolkit/mcp/index.mjs'); return index.description;` to discover the compact helper modules. " +
-            "Load helper modules from `YuzeToolkit/mcp/Runtime/*.mjs` or `YuzeToolkit/mcp/Editor/*.mjs` only when needed, and read a module's `description` before first use. " +
-            "Runtime helpers cover environment state, logs, batching, scene GameObjects, Components, read-only diagnostics, and C# reflection. " +
-            "Editor helpers cover Editor state, compilation, selection, menu commands, screenshots, AssetDatabase operations, importers, scripts, materials, scenes, prefabs, SerializedObject, project settings, packages, tests, builds, and validation. " +
-            "Editor helper modules and Editor-only bridge commands require the Unity Editor and fail in Runtime/Player; query `runtime.getState`, `Runtime/runtime.mjs#getState()`, or `/health` to check the current environment. " +
-            "Use `Mcp.invoke(name, args)` for synchronous C# bridge commands and `await Mcp.invokeAsync(name, args)` for asynchronous bridge commands. " +
-            "When a helper does not cover a project-specific custom class, custom editor utility, or special Unity API, write custom JavaScript inside `execute()` and combine helper calls, direct bridge calls, reflection, or any PuerTS-accessible C# API available in this Unity project. " +
-            "For direct PuerTS C# interop, use the `CS` global, for example `CS.UnityEngine.GameObject.Find('Main Camera')` or `CS.UnityEditor.AssetDatabase.FindAssets('t:Prefab')` in the Editor. " +
-            "When a Unity API expects a `System.Type`, use `puer.$typeof(CS.Namespace.Type)` or `puerts.$typeof(CS.Namespace.Type)`, for example `go.GetComponent(puer.$typeof(CS.UnityEngine.Camera))`. " +
-            "Direct JavaScript runs in PuerTS, not Node.js; prefer bridge/helper file APIs for project file IO and return plain serializable objects instead of raw UnityEngine.Object graphs. " +
-            "Destructive operations require explicit confirmation where documented, such as `confirm: true`; non-public reflection or dangerous writes require `confirmDangerous: true` where documented. " +
-            "During Unity compilation or asset refresh this tool returns a busy error; Domain Reload may briefly disconnect the MCP session, so reinitialize/retry after Unity becomes idle. " +
+            "Execute JavaScript inside Unity through the current MCP session's persistent PuerTS VM. " +
+            "Your code must define `async function execute() { ... }` and return concise serializable data. " +
+            "First discover tools with `const index = await import('tools/index'); return index.description;`. " +
+            "Import C# tools from `tools/<name>` and call exported functions directly, for example `const runtime = await import('tools/runtime'); return runtime.getState();`. " +
+            "Use helper modules first for common workflows because they return stable structured data; when helpers do not cover the task, use PuerTS `CS.*` interop directly to run Unity/C# APIs in this VM. " +
+            "Generated C# tool functions accept positional arguments such as `assets.findPaths('t:Prefab', 50)`. Function metadata includes `description`, ordered `parameters`, and legacy `parameterTypes`. " +
+            "Prefer returning primitives, lists, and dictionaries; the server serializes them as JSON text content. UnityEngine.Object and custom C# objects are summarized at the server boundary. " +
+            "Editor-only tools require the Unity Editor; runtime tools work in Editor and Player. " +
+            "Destructive operations require explicit flags such as `confirm: true`, `confirmOverwrite: true`, or `confirmDangerous: true`. " +
+            "The timeout only bounds async completion after control returns to Unity; it cannot interrupt an infinite synchronous JS loop or a long blocking Unity call. " +
             "Do not trigger script compilation or AssetDatabase refresh and then wait for completion in the same eval call.";
     }
 }

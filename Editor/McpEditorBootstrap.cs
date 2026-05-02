@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using UnityEditor;
 using UnityEngine;
 
@@ -8,11 +8,13 @@ namespace YuzeToolkit
     internal static class McpEditorBootstrap
     {
         private const string PrefKeyAutoStart = nameof(YuzeToolkit) + "." + nameof(McpServer) + ".AutoStart";
+        private const string PrefKeyHost = nameof(YuzeToolkit) + "." + nameof(McpServer) + ".Host";
         private const string PrefKeyPort = nameof(YuzeToolkit) + "." + nameof(McpServer) + ".Port";
+        private const string PrefKeyBindLocalhostAliases = nameof(YuzeToolkit) + "." + nameof(McpServer) + ".BindLocalhostAliases";
 
         static McpEditorBootstrap()
         {
-            RegisterEditorCommands();
+            EditorApplication.delayCall += McpToolEditorSettings.ApplyPersistedStates;
             EditorApplication.delayCall += StartIfNeeded;
         }
 
@@ -50,7 +52,7 @@ namespace YuzeToolkit
 
         private static void StartIfNeeded()
         {
-            if (!EditorPrefs.GetBool(PrefKeyAutoStart, true)) return;
+            if (!EditorPrefs.GetBool(PrefKeyAutoStart, false)) return;
             McpServer.Shared.Start(LoadOptions());
         }
 
@@ -58,28 +60,10 @@ namespace YuzeToolkit
         {
             return new McpServerOptions
             {
-                Port = EditorPrefs.GetInt(PrefKeyPort, 3100)
+                Host = EditorPrefs.GetString(PrefKeyHost, "127.0.0.1"),
+                Port = EditorPrefs.GetInt(PrefKeyPort, 3100),
+                BindLocalhostAliases = EditorPrefs.GetBool(PrefKeyBindLocalhostAliases, true)
             };
-        }
-
-        private static void RegisterEditorCommands()
-        {
-            McpCommandRegistry.EnsureDefaultCommands();
-            TryRegister(new EditorExecuteCommand());
-            TryRegister(new AssetExecuteCommand());
-            TryRegister(new ImporterExecuteCommand());
-            TryRegister(new SceneExecuteCommand());
-            TryRegister(new PrefabExecuteCommand());
-            TryRegister(new SerializedExecuteCommand());
-            TryRegister(new ProjectExecuteCommand());
-            TryRegister(new PipelineExecuteCommand());
-            TryRegister(new ValidationExecuteCommand());
-        }
-
-        private static void TryRegister(IMcpCommand command)
-        {
-            if (McpCommandRegistry.TryGet(command.Name, out _)) return;
-            McpCommandRegistry.Register(command);
         }
     }
 }

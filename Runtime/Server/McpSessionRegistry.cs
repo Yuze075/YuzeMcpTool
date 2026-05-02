@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System;
 using System.Collections.Generic;
 
@@ -58,6 +58,28 @@ namespace YuzeToolkit
             return session != null;
         }
 
+        public bool TryRemoveIdle(string sessionId, out bool isRunning)
+        {
+            isRunning = false;
+            McpSession? session = null;
+            lock (_syncRoot)
+            {
+                if (!_sessions.TryGetValue(sessionId, out session))
+                    return false;
+
+                if (session.IsEvalRunning)
+                {
+                    isRunning = true;
+                    return false;
+                }
+
+                _sessions.Remove(sessionId);
+            }
+
+            session.Dispose();
+            return true;
+        }
+
         public List<McpSessionSnapshot> GetSnapshots()
         {
             lock (_syncRoot)
@@ -77,7 +99,7 @@ namespace YuzeToolkit
             {
                 foreach (var pair in _sessions)
                 {
-                    if (now - pair.Value.LastSeenUtc >= idleTime)
+                    if (!pair.Value.IsEvalRunning && now - pair.Value.LastSeenUtc >= idleTime)
                         removed.Add(pair.Value);
                 }
 

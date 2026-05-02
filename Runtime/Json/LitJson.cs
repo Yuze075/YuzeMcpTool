@@ -16,66 +16,7 @@ namespace YuzeToolkit
 
         internal static object? Parse(string json) => ConvertJsonData(JsonMapper.ToObject(json));
 
-        internal static Dictionary<string, object?>? AsObject(object? value) => value as Dictionary<string, object?>;
-
-        internal static List<object?>? AsArray(object? value) => value as List<object?>;
-
-        internal static string? GetString(Dictionary<string, object?> obj, string key)
-        {
-            if (!obj.TryGetValue(key, out var value) || value == null) return null;
-            return value as string ?? Convert.ToString(value, CultureInfo.InvariantCulture);
-        }
-
-        internal static int GetInt(Dictionary<string, object?> obj, string key, int defaultValue = 0)
-        {
-            if (!obj.TryGetValue(key, out var value) || value == null) return defaultValue;
-            return value switch
-            {
-                int v => v,
-                long v => checked((int)v),
-                double v => checked((int)v),
-                float v => checked((int)v),
-                string s when int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) => parsed,
-                _ => defaultValue
-            };
-        }
-
-        internal static float GetFloat(Dictionary<string, object?> obj, string key, float defaultValue = 0f)
-        {
-            if (!obj.TryGetValue(key, out var value) || value == null) return defaultValue;
-            return value switch
-            {
-                float v => v,
-                double v => (float)v,
-                int v => v,
-                long v => v,
-                string s when float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) => parsed,
-                _ => defaultValue
-            };
-        }
-
-        internal static bool GetBool(Dictionary<string, object?> obj, string key, bool defaultValue = false)
-        {
-            if (!obj.TryGetValue(key, out var value) || value == null) return defaultValue;
-            return value switch
-            {
-                bool v => v,
-                string s when bool.TryParse(s, out var parsed) => parsed,
-                _ => defaultValue
-            };
-        }
-
         internal static string Stringify(object? value) => JsonMapper.ToJson(value);
-
-        internal static Dictionary<string, object?> Obj(params (string Key, object? Value)[] values)
-        {
-            var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var (key, value) in values)
-                result[key] = value;
-            return result;
-        }
-
-        internal static List<object?> Arr(params object?[] values) => new(values);
 
         private static object? ConvertJsonData(JsonData? data)
         {
@@ -2199,6 +2140,12 @@ namespace YuzeToolkit
                     return;
                 }
 
+                if (obj is decimal dec)
+                {
+                    writer.Write(dec);
+                    return;
+                }
+
                 if (obj is float f)
                 {
                     writer.Write(f);
@@ -2359,10 +2306,17 @@ namespace YuzeToolkit
                 lock (StaticWriterLock)
                 {
                     StaticWriter.Reset();
-
-                    WriteValue(obj, StaticWriter, true, 0);
-
-                    return StaticWriter.ToString();
+                    var oldValidate = StaticWriter.Validate;
+                    StaticWriter.Validate = false;
+                    try
+                    {
+                        WriteValue(obj, StaticWriter, true, 0);
+                        return StaticWriter.ToString();
+                    }
+                    finally
+                    {
+                        StaticWriter.Validate = oldValidate;
+                    }
                 }
             }
 

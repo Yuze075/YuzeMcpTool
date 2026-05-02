@@ -22,7 +22,8 @@ namespace YuzeToolkit
             {
                 return new List<Type>
                 {
-                    typeof(McpBridge),
+                    typeof(McpToolRegistry),
+                    typeof(McpValueFormatter),
                     typeof(GameObject),
                     typeof(Component),
                     typeof(Transform),

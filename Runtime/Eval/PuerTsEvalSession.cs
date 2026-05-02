@@ -32,14 +32,18 @@ namespace YuzeToolkit
             }
         }
     }
-    function toText(value, images) {
-        if (typeof value === 'undefined') return '(no return value)';
-        if (value === null) return 'null';
+    function normalizeResult(value, images) {
+        if (typeof value === 'undefined') return { hasValue: false, value: null };
         if (typeof value === 'object') {
             collectImages(value, images, []);
-            try { return JSON.stringify(value, null, 2); } catch (_) { return String(value); }
+            try {
+                JSON.stringify(value);
+                return { hasValue: true, value: value };
+            } catch (_) {
+                return { hasValue: true, value: String(value), fallback: 'string' };
+            }
         }
-        return String(value);
+        return { hasValue: true, value: value };
     }
     Promise.resolve()
         .then(function() {
@@ -53,10 +57,14 @@ namespace YuzeToolkit
         })
         .then(function(result) {
             var images = [];
-            var text = toText(result, images);
-            var content = [{ type: 'text', text: text }];
-            for (var i = 0; i < images.length; i++) content.push(images[i]);
-            onFinish.Invoke(JSON.stringify({ success: true, content: content }));
+            var normalized = normalizeResult(result, images);
+            onFinish.Invoke(JSON.stringify({
+                success: true,
+                hasValue: normalized.hasValue,
+                result: normalized.value,
+                fallback: normalized.fallback || '',
+                images: images
+            }));
         })
         .catch(function(err) {
             onFinish.Invoke(JSON.stringify({
@@ -95,7 +103,6 @@ namespace YuzeToolkit
             await MainThreadDispatcher.RunAsync(() =>
             {
                 EnsureEnv();
-                McpBridge.CurrentContext = new McpBridgeContext(_session, requestId, cancellationToken);
 
                 try
                 {
@@ -104,7 +111,7 @@ namespace YuzeToolkit
                 }
                 catch (Exception ex)
                 {
-                    completion.TrySetResult(LitJson.Stringify(LitJson.Obj(
+                    completion.TrySetResult(LitJson.Stringify(McpData.Obj(
                         ("success", false),
                         ("error", ex.Message),
                         ("stack", ex.StackTrace ?? string.Empty)
@@ -120,11 +127,9 @@ namespace YuzeToolkit
                 return Error($"Execution timed out after {timeoutSeconds}s. The eval VM for this MCP session was reset.");
             }
 
-            await MainThreadDispatcher.RunAsync(() => McpBridge.CurrentContext = null);
-
             try
             {
-                var parsed = LitJson.AsObject(LitJson.Parse(completion.Task.Result));
+                var parsed = McpData.AsObject(LitJson.Parse(completion.Task.Result));
                 return parsed ?? Error("evalJsCode returned invalid JSON.");
             }
             catch (Exception ex)
@@ -157,27 +162,7 @@ namespace YuzeToolkit
         {
             _scriptEnv!.Eval(@"
 globalThis.Mcp = {
-    backend: '" + PuerTsBackendFactory.SelectedBackendName + @"',
-    invokeRaw: function(name, args) {
-        return CS.YuzeToolkit.McpBridge.InvokeSync(String(name), JSON.stringify(args || {}));
-    },
-    invoke: function(name, args) {
-        return JSON.parse(CS.YuzeToolkit.McpBridge.InvokeSync(String(name), JSON.stringify(args || {})));
-    },
-    invokeAsyncRaw: function(name, args) {
-        return new Promise(function(resolve) {
-            CS.YuzeToolkit.McpBridge.InvokeAsync(String(name), JSON.stringify(args || {}), function(result) {
-                resolve(result);
-            });
-        });
-    },
-    invokeAsync: function(name, args) {
-        return new Promise(function(resolve) {
-            CS.YuzeToolkit.McpBridge.InvokeAsync(String(name), JSON.stringify(args || {}), function(result) {
-                resolve(JSON.parse(result));
-            });
-        });
-    }
+    backend: '" + PuerTsBackendFactory.SelectedBackendName + @"'
 };
 ", "Mcp.bootstrap");
         }
@@ -223,7 +208,6 @@ globalThis.Mcp = {
         private void DisposeEnv(string reason)
         {
             StopTicking();
-            McpBridge.CurrentContext = null;
             if (_scriptEnv == null) return;
 
             try
@@ -241,7 +225,7 @@ globalThis.Mcp = {
         }
 
         private static Dictionary<string, object?> Error(string message) =>
-            LitJson.Obj(("success", false), ("error", message), ("stack", string.Empty));
+            McpData.Obj(("success", false), ("error", message), ("stack", string.Empty));
 
 #if !UNITY_EDITOR
         private sealed class RuntimeTicker : MonoBehaviour
