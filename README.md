@@ -114,6 +114,19 @@ The package also includes a local TCP bridge for the `unity` CLI. It is separate
 
 All CLI bridge operations are in `UnityEvalTool/Window`, under the CLI Service and CLI Consoles tabs.
 
+CLI Project：
+
+```text
+https://github.com/Yuze075/UnityCLI
+```
+
+Build：
+
+```bash
+dotnet build Game/UnityCLI/unity-cli.csproj
+```
+
+
 Common CLI usage:
 
 ```bash
