@@ -1,12 +1,12 @@
 # Helper Reference
 
-[README](../README.md) | [中文](HELPER_MODULES_zh.md) | [Project design](PROJECT_DESIGN.md) | [Advanced notes](ADVANCED_USAGE.md)
+[README](../README.md) | [中文](HELPER_MODULES_zh.md) | [Runtime services](RUNTIME_SERVICES.md) | [Project design](PROJECT_DESIGN.md) | [Advanced notes](ADVANCED_USAGE.md)
 
-[![Runtime](https://img.shields.io/badge/Runtime-6%20modules-2ecc71)](#runtime-helpers)
+[![Runtime](https://img.shields.io/badge/Runtime-7%20modules-2ecc71)](#runtime-helpers)
 [![Editor](https://img.shields.io/badge/Editor-9%20modules-3498db)](#editor-helpers)
 [![Tool](https://img.shields.io/badge/MCP%20Tool-evalJsCode-orange)](../README.md#design-choice)
 
-YuzeMcpTool exposes one MCP tool, `evalJsCode`. Inside that tool, agents import helper modules from `tools/...`. Built-in modules are generated from registered C# classes marked with `[McpTool(name, description)]`; each C# module exports semantic functions that validate the tool is enabled, call public C# instance methods through PuerTS, and leave final result formatting to the MCP server. Project and package extensions can also provide JavaScript modules under `Resources/tools`.
+UnityEvalTool exposes one MCP tool, `evalJsCode`. Inside that tool, agents import helper modules from `tools/...`. Built-in modules are generated from registered C# classes marked with `[EvalTool(name, description)]` or implementing `IEvalTool`; each C# module exports semantic functions that validate the tool is enabled, call public C# instance methods through PuerTS, and leave final result formatting to the MCP server. Project and package extensions can also provide JavaScript modules under `Resources/tools`.
 
 Generated C# helpers should prefer primitives, `List<T>`, `Dictionary<string, TValue>`, or data composed from those types. The server returns those values as JSON text content, which is the most stable and recommended tool result shape.
 
@@ -25,7 +25,7 @@ async function execute() {
 
 | Category | Modules |
 |---|---|
-| Runtime helpers | `runtime`, `objects`, `components`, `diagnostics`, `reflection`, `inspect` |
+| Runtime helpers | `runtime`, `cli`, `objects`, `components`, `diagnostics`, `reflection`, `inspect` |
 | Editor helpers | `editor`, `assets`, `importers`, `scenes`, `prefabs`, `serialized`, `project`, `pipeline`, `validation` |
 
 Runtime helpers can run in Editor or Runtime/Player when the underlying Unity API is available. Editor helpers require `UnityEditor` and fail clearly in Runtime/Player.
@@ -43,6 +43,16 @@ Environment state and Unity logs.
 | `getState()` | Environment, Unity version, platform, play state, paths, active scene, registered tools. |
 | `getRecentLogs(count?, type?)` | MCP-captured Unity logs. |
 | `clearLogs()` | Clear the MCP log buffer. |
+
+### `tools/cli`
+
+Runtime CLI bridge control.
+
+| Function | Purpose | Safety |
+|---|---|---|
+| `startCliBridge(host?, port?, token?, requireToken?)` | Start the CLI bridge. Use `port = 0` to select a free port. | Opens a local TCP debug service |
+| `stopCliBridge()` | Stop the CLI bridge and close active CLI connections. | Closes service |
+| `getCliBridgeState()` | Return bridge endpoint, token-auth state, token, sessions, and last error. | Read-only |
 
 ### `tools/objects`
 
@@ -128,7 +138,7 @@ Editor state, compilation, selection, menu commands, play mode, and screenshots.
 | `scheduleAssetRefresh()` | Request AssetDatabase refresh. | May trigger reload |
 | `getCompilerMessages(count?)` | Recent compiler-like errors/warnings. | Read-only |
 | `getSelection()` / `setSelection(items)` | Read or set Editor selection. | Selection mutation |
-| `executeMenuItem(path, confirm?)` | Execute an Editor menu item. | Non-Yuze menu requires `confirm: true` |
+| `executeMenuItem(path, confirm?)` | Execute an Editor menu item. | Non-UnityEvalTool menu requires `confirm: true` |
 | `setPlayMode(isPlaying)` / `setPause(isPaused)` | Control play/pause state. | Changes Editor state |
 | `screenshotGameView(path?)` | Capture Game View. | Writes screenshot file |
 

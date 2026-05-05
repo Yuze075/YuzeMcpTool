@@ -1,12 +1,12 @@
 # Helper 参考
 
-[README](../README_zh.md) | [English](HELPER_MODULES.md) | [项目设计](PROJECT_DESIGN_zh.md) | [高级说明](ADVANCED_USAGE_zh.md)
+[README](../README_zh.md) | [English](HELPER_MODULES.md) | [Runtime 服务](RUNTIME_SERVICES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md) | [高级说明](ADVANCED_USAGE_zh.md)
 
-[![Runtime](https://img.shields.io/badge/Runtime-6%20modules-2ecc71)](#runtime-helpers)
+[![Runtime](https://img.shields.io/badge/Runtime-7%20modules-2ecc71)](#runtime-helpers)
 [![Editor](https://img.shields.io/badge/Editor-9%20modules-3498db)](#editor-helpers)
 [![Tool](https://img.shields.io/badge/MCP%20Tool-evalJsCode-orange)](../README_zh.md#设计取舍)
 
-YuzeMcpTool 只暴露一个 MCP tool：`evalJsCode`。在这个 tool 里，Agent 从 `tools/...` import helper module。内置 module 从带 `[McpTool(name, description)]` 的已注册 C# class 生成；每个 C# module 导出语义函数，每次调用都会确认 tool 仍处于启用状态，再通过 PuerTS 调用 C# public 实例方法，并把返回值交给 MCP 服务端统一格式化。项目和其他包也可以在 `Resources/tools` 下提供 JavaScript module。
+UnityEvalTool 只暴露一个 MCP tool：`evalJsCode`。在这个 tool 里，Agent 从 `tools/...` import helper module。内置 module 从带 `[EvalTool(name, description)]` 或实现 `IEvalTool` 的已注册 C# class 生成；每个 C# module 导出语义函数，每次调用都会确认 tool 仍处于启用状态，再通过 PuerTS 调用 C# public 实例方法，并把返回值交给 MCP 服务端统一格式化。项目和其他包也可以在 `Resources/tools` 下提供 JavaScript module。
 
 生成的 C# helper 应优先返回基础类型、`List<T>`、`Dictionary<string, TValue>` 或由这些类型组成的数据。服务端会把这类结果作为 JSON text content 返回，这是最稳定、最推荐的工具返回形态。
 
@@ -25,7 +25,7 @@ async function execute() {
 
 | 分类 | 模块 |
 |---|---|
-| Runtime helpers | `runtime`, `objects`, `components`, `diagnostics`, `reflection`, `inspect` |
+| Runtime helpers | `runtime`, `cli`, `objects`, `components`, `diagnostics`, `reflection`, `inspect` |
 | Editor helpers | `editor`, `assets`, `importers`, `scenes`, `prefabs`, `serialized`, `project`, `pipeline`, `validation` |
 
 Runtime helper 可在 Editor 或 Runtime/Player 中运行，前提是底层 Unity API 可用。Editor helper 依赖 `UnityEditor`，在 Runtime/Player 中会明确失败。
@@ -43,6 +43,16 @@ Runtime helper 可在 Editor 或 Runtime/Player 中运行，前提是底层 Unit
 | `getState()` | 环境、Unity 版本、平台、播放状态、路径、active scene、已注册 tools。 |
 | `getRecentLogs(count?, type?)` | MCP 捕获的 Unity 日志。 |
 | `clearLogs()` | 清空 MCP log buffer。 |
+
+### `tools/cli`
+
+Runtime CLI bridge 控制。
+
+| 函数 | 用途 | 安全 |
+|---|---|---|
+| `startCliBridge(host?, port?, token?, requireToken?)` | 启动 CLI bridge。`port = 0` 表示自动选择可用端口。 | 打开本地 TCP 调试服务 |
+| `stopCliBridge()` | 停止 CLI bridge 并关闭活跃 CLI 连接。 | 关闭服务 |
+| `getCliBridgeState()` | 返回 bridge endpoint、token 鉴权状态、token、session 和最近错误。 | 只读 |
 
 ### `tools/objects`
 
@@ -128,7 +138,7 @@ Editor 状态、编译、Selection、菜单、播放模式和截图。
 | `scheduleAssetRefresh()` | 请求 AssetDatabase refresh。 | 可能触发 reload |
 | `getCompilerMessages(count?)` | 最近类似编译器的错误/警告。 | 只读 |
 | `getSelection()` / `setSelection(items)` | 读取或设置 Editor selection。 | 修改 selection |
-| `executeMenuItem(path, confirm?)` | 执行 Editor menu item。 | 非 Yuze 菜单需要 `confirm: true` |
+| `executeMenuItem(path, confirm?)` | 执行 Editor menu item。 | 非 UnityEvalTool 菜单需要 `confirm: true` |
 | `setPlayMode(isPlaying)` / `setPause(isPaused)` | 控制播放/暂停状态。 | 改变 Editor 状态 |
 | `screenshotGameView(path?)` | 捕获 Game View。 | 写入截图文件 |
 

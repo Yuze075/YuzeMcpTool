@@ -1,7 +1,7 @@
 {
-  "name": "com.yuzetoolkit.mcptool",
+  "name": "com.yuzetoolkit.unityevaltool",
   "version": "1.0.0",
-  "displayName": "YuzeMcpTool",
+  "displayName": "UnityEvalTool",
   "description": "一个给 AI Agent 使用的 MCP 服务，让 AI 可以访问 Unity 逻辑",
   "unity": "2022.3",
   "author": {

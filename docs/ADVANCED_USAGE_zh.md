@@ -1,6 +1,6 @@
 # 高级说明
 
-[README](../README_zh.md) | [English](ADVANCED_USAGE.md) | [Helper 参考](HELPER_MODULES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md)
+[README](../README_zh.md) | [English](ADVANCED_USAGE.md) | [Helper 参考](HELPER_MODULES_zh.md) | [Runtime 服务](RUNTIME_SERVICES_zh.md) | [项目设计](PROJECT_DESIGN_zh.md)
 
 [![Tools](https://img.shields.io/badge/Tools-Generated-9b59b6)](#tool-invokes)
 [![PuerTS](https://img.shields.io/badge/PuerTS-C%23%20Interop-00a8ff)](#puerts-c-interop)
@@ -21,11 +21,36 @@ async function execute() {
 }
 ```
 
+## Runtime 服务启动
+
+Runtime/Player 代码可以直接启动服务：
+
+```csharp
+McpServer.Shared.Start(new McpServerOptions
+{
+    Host = "127.0.0.1",
+    Port = 3100,
+    RequireToken = true,
+    Token = "runtime-token"
+});
+
+CliBridgeServer.Shared.Start(new CliBridgeOptions
+{
+    Host = "127.0.0.1",
+    Port = 0,
+    RequireToken = true,
+    Token = "runtime-token"
+});
+```
+
+如果场景生命周期已经足够，使用 `McpServerBehaviour`。如果多个系统都可能要求 MCP server 保持运行，使用 `McpServer.Shared.StartWithOwner(ownerId, options)`。Runtime 设置不会从 Editor 窗口读取；需要加载自己的配置并传给 options。详细启动方式和一致性说明见 [Runtime 服务](RUNTIME_SERVICES_zh.md)。
+
 ## Runtime Tools
 
 | Tool | Actions |
 |---|---|
 | `runtime` | `getState`, `getRecentLogs`, `clearLogs` |
+| `cli` | `startCliBridge`, `stopCliBridge`, `getCliBridgeState` |
 | `objects` | `find`, `get`, `create`, `destroy`, `duplicate`, `setParent`, `setTransform`, `setActive`, `setNameLayerTag` |
 | `components` | `list`, `get`, `add`, `remove`, `setProperty`, `setProperties`, `callMethod`, `listTypes` |
 | `diagnostics` | `listCameras`, `getPhysicsState`, `getGraphicsState`, `listCanvases`, `listLoadedTextures` |
@@ -137,6 +162,8 @@ Unity 在编译脚本、刷新资源或切换 play mode 时会短暂不可用。
 | 不要在同一次 `evalJsCode` 中触发编译后等待完成。 | Domain Reload 可能杀掉 session。 |
 | 文件编辑、刷新请求、编译检查拆成多次调用。 | Unity 需要 editor tick 推进状态。 |
 | session 丢失后重新 initialize MCP 客户端。 | Domain Reload 或 server 重启会让 session id 失效。 |
+| Unity Test Runner、编译或 Domain Reload 后重新连接 CLI client。 | Editor 可以在 reload 后恢复 CLI bridge 监听，但已有 TCP 连接已经断开。 |
+| 修改 host、port 或鉴权配置后先停服务再重启。 | MCP 和 CLI listener 只在启动时绑定 options。 |
 | busy error 等 Unity idle 后重试。 | server 会避免在不安全状态执行 eval。 |
 
 推荐脚本编辑流程：
@@ -166,7 +193,7 @@ Unity 在编译脚本、刷新资源或切换 play mode 时会短暂不可用。
 - `pipeline.addPackage(...)`
 - `pipeline.removePackage(...)`
 - `pipeline.buildPlayer(...)`
-- 非 `YuzeToolkit/MCP` 菜单项
+- 非 `UnityEvalTool` 菜单项
 
 ## 路径规则
 
@@ -175,14 +202,16 @@ Unity 在编译脚本、刷新资源或切换 play mode 时会短暂不可用。
 | 正确 | 错误 |
 |---|---|
 | `Assets/Settings/GameSettings.asset` | `../outside-project/file.txt` |
-| `Packages/com.yuzetoolkit.mcptool/README.md` | `C:/Users/Name/Desktop/file.txt` |
-| `Temp/YuzeMcpTool-GameView.png` | 网络路径或无关绝对路径 |
+| `Packages/com.yuzetoolkit.unityevaltool/README.md` | `C:/Users/Name/Desktop/file.txt` |
+| `Temp/UnityEvalTool-GameView.png` | 网络路径或无关绝对路径 |
 
 ## 故障排查
 
 | 错误 | 处理 |
 |---|---|
 | `Session not found` | 重新 initialize MCP 客户端。 |
+| Runtime 服务仍使用旧 host 或 port | 停止服务，再用新 options 启动。 |
+| Runtime 没有匹配 Editor 窗口设置 | Player 不读取 `EditorPrefs`；把同样的值传入 Runtime options。 |
 | `Unity Editor is compiling scripts` | 等待编译结束后重试。 |
 | `Unity Editor is updating assets` | 等待 AssetDatabase refresh。 |
 | `Unity Editor is changing play mode` | 等待 play mode 切换结束。 |

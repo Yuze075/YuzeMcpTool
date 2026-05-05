@@ -1,6 +1,6 @@
 # Advanced Notes
 
-[README](../README.md) | [中文](ADVANCED_USAGE_zh.md) | [Helper reference](HELPER_MODULES.md) | [Project design](PROJECT_DESIGN.md)
+[README](../README.md) | [中文](ADVANCED_USAGE_zh.md) | [Helper reference](HELPER_MODULES.md) | [Runtime services](RUNTIME_SERVICES.md) | [Project design](PROJECT_DESIGN.md)
 
 [![Tools](https://img.shields.io/badge/Tools-Generated-9b59b6)](#tool-invokes)
 [![PuerTS](https://img.shields.io/badge/PuerTS-C%23%20Interop-00a8ff)](#puerts-c-interop)
@@ -21,11 +21,36 @@ async function execute() {
 }
 ```
 
+## Runtime Service Startup
+
+Runtime/Player code can start services directly:
+
+```csharp
+McpServer.Shared.Start(new McpServerOptions
+{
+    Host = "127.0.0.1",
+    Port = 3100,
+    RequireToken = true,
+    Token = "runtime-token"
+});
+
+CliBridgeServer.Shared.Start(new CliBridgeOptions
+{
+    Host = "127.0.0.1",
+    Port = 0,
+    RequireToken = true,
+    Token = "runtime-token"
+});
+```
+
+Use `McpServerBehaviour` when scene lifetime is enough. Use `McpServer.Shared.StartWithOwner(ownerId, options)` when multiple systems may keep the shared MCP server alive. Runtime settings are not loaded from the Editor window; load your own config and pass it into the options. Details and parity notes are in [Runtime services](RUNTIME_SERVICES.md).
+
 ## Runtime Tools
 
 | Tool | Actions |
 |---|---|
 | `runtime` | `getState`, `getRecentLogs`, `clearLogs` |
+| `cli` | `startCliBridge`, `stopCliBridge`, `getCliBridgeState` |
 | `objects` | `find`, `get`, `create`, `destroy`, `duplicate`, `setParent`, `setTransform`, `setActive`, `setNameLayerTag` |
 | `components` | `list`, `get`, `add`, `remove`, `setProperty`, `setProperties`, `callMethod`, `listTypes` |
 | `diagnostics` | `listCameras`, `getPhysicsState`, `getGraphicsState`, `listCanvases`, `listLoadedTextures` |
@@ -137,6 +162,8 @@ Unity can become temporarily unavailable while compiling scripts, refreshing ass
 | Do not trigger compilation and wait in the same `evalJsCode` call. | Domain Reload can kill the session. |
 | Split file edits, refresh requests, and compiler checks into separate calls. | Unity needs editor ticks between steps. |
 | Reinitialize the MCP client after session loss. | Domain Reload or server restart invalidates session ids. |
+| Reconnect CLI clients after Unity Test Runner, compilation, or Domain Reload. | The Editor can restore the CLI bridge listener after reload, but existing TCP clients are gone. |
+| Stop and restart a service to apply host, port, or auth changes. | MCP and CLI listeners bind options only when they start. |
 | Retry busy errors after Unity becomes idle. | The server intentionally rejects unsafe eval during busy states. |
 
 Recommended script-edit flow:
@@ -166,7 +193,7 @@ Common operations requiring `confirm: true`:
 - `pipeline.addPackage(...)`
 - `pipeline.removePackage(...)`
 - `pipeline.buildPlayer(...)`
-- non-`YuzeToolkit/MCP` menu items
+- non-`UnityEvalTool` menu items
 
 ## Path Rules
 
@@ -175,14 +202,16 @@ Tool calls that perform project file IO resolve paths inside the Unity project r
 | Good | Bad |
 |---|---|
 | `Assets/Settings/GameSettings.asset` | `../outside-project/file.txt` |
-| `Packages/com.yuzetoolkit.mcptool/README.md` | `C:/Users/Name/Desktop/file.txt` |
-| `Temp/YuzeMcpTool-GameView.png` | Network paths or unrelated absolute paths |
+| `Packages/com.yuzetoolkit.unityevaltool/README.md` | `C:/Users/Name/Desktop/file.txt` |
+| `Temp/UnityEvalTool-GameView.png` | Network paths or unrelated absolute paths |
 
 ## Troubleshooting
 
 | Error | Fix |
 |---|---|
 | `Session not found` | Reinitialize the MCP client. |
+| Runtime service uses old host or port | Stop the service and start it again with new options. |
+| Runtime does not match Editor window settings | Player does not read `EditorPrefs`; pass the same values into Runtime options. |
 | `Unity Editor is compiling scripts` | Wait for compilation, then retry. |
 | `Unity Editor is updating assets` | Wait for AssetDatabase refresh. |
 | `Unity Editor is changing play mode` | Wait for the play mode transition. |

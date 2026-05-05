@@ -1,0 +1,54 @@
+{
+  "name": "UnityEvalTool.Editor.CLI",
+  "rootNamespace": "YuzeToolkit",
+  "references": [
+    "UnityEvalTool",
+    "UnityEvalTool.Editor",
+    "UnityEvalTool.CLI",
+    "com.tencent.puerts.core",
+    "com.tencent.puerts.core.Editor",
+    "com.tencent.puerts.nodejs",
+    "com.tencent.puerts.v8",
+    "com.tencent.puerts.quickjs",
+    "com.tencent.puerts.webgl",
+    "UnityEditor.TestRunner",
+    "UnityEngine.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.tencent.puerts.nodejs",
+      "expression": "3.0.0",
+      "define": "YUZE_USE_PUER_TS_NODE_JS"
+    },
+    {
+      "name": "com.tencent.puerts.v8",
+      "expression": "3.0.0",
+      "define": "YUZE_USE_PUER_TS_V8"
+    },
+    {
+      "name": "com.tencent.puerts.quickjs",
+      "expression": "3.0.0",
+      "define": "YUZE_USE_PUER_TS_QUICK_JS"
+    },
+    {
+      "name": "com.tencent.puerts.webgl",
+      "expression": "3.0.0",
+      "define": "YUZE_USE_PUER_TS_WEBGL"
+    },
+    {
+      "name": "com.unity.test-framework",
+      "expression": "1.4.0",
+      "define": "YUZE_USE_UNITY_TEST_FRAMEWORK"
+    }
+  ],
+  "noEngineReferences": false
+}
