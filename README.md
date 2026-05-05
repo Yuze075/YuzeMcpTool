@@ -75,7 +75,7 @@ Unity Package Manager UI:
 5. Paste:
 
 ```text
-https://github.com/Yuze075/YuzeMcpTool.git
+https://github.com/Yuze075/UnityEvalTool.git
 ```
 
 6. Click `Add`.
@@ -86,7 +86,7 @@ Or edit `Packages/manifest.json` manually and add the entry alongside your exist
 ```json
 {
   "dependencies": {
-    "com.yuzetoolkit.unityevaltool": "https://github.com/Yuze075/YuzeMcpTool.git"
+    "com.yuzetoolkit.unityevaltool": "https://github.com/Yuze075/UnityEvalTool.git"
   }
 }
 ```

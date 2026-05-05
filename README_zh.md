@@ -75,7 +75,7 @@ Unity Package Manager 界面安装：
 5. 粘贴：
 
 ```text
-https://github.com/Yuze075/YuzeMcpTool.git
+https://github.com/Yuze075/UnityEvalTool.git
 ```
 
 6. 点击 `Add`。
@@ -86,7 +86,7 @@ https://github.com/Yuze075/YuzeMcpTool.git
 ```json
 {
   "dependencies": {
-    "com.yuzetoolkit.unityevaltool": "https://github.com/Yuze075/YuzeMcpTool.git"
+    "com.yuzetoolkit.unityevaltool": "https://github.com/Yuze075/UnityEvalTool.git"
   }
 }
 ```
